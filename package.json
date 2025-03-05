@@ -1,0 +1,27 @@
+{
+  "name": "egg",
+  "version": "0.1.0",
+  "description": "egg in TypeScript",
+  "main": "index.js",
+  "repository": "https://github.com/tayloia/egg-typescript.git",
+  "author": "tayloia <tayloia@hotmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "test": "mocha",
+    "coverage": "nyc -r lcov -e .ts -x \"*.test.ts\" npm run test"
+  },
+  "mocha": {
+    "spec": "**/*.tests.ts",
+    "require": "ts-node/register",
+    "ignore": ["node_modules"]
+  },
+  "dependencies": {
+    "@types/chai": "^5.0.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.13.8",
+    "chai": "^5.2.0",
+    "mocha": "^11.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  }
+}
