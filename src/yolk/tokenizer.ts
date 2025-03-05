@@ -12,7 +12,7 @@ function isLineSeparator(codepoint: number): boolean {
     return false;
 }
 
-function isWhitespace(codepoint: number): boolean {
+function isSpaceSeparator(codepoint: number): boolean {
     switch (codepoint) {
         case 0x0009: // Horizontal tab '\t'
         case 0x0020: // Space
@@ -34,7 +34,7 @@ function isWhitespace(codepoint: number): boolean {
         case 0x3000: // Ideographic space
             return true;
     }
-    return isLineSeparator(codepoint);
+    return false;
 }
 
 function isDigit(codepoint: number): boolean {
@@ -78,7 +78,7 @@ export class Tokenizer {
         if (next < 0) {
             return undefined;
         }
-        if (isWhitespace(next)) {
+        if (isLineSeparator(next) || isSpaceSeparator(next)) {
             let previous = -1;
             let count = 0;
             let value = "";
@@ -94,15 +94,69 @@ export class Tokenizer {
                 }
                 previous = next;
                 next = this.peek(++count);
-            } while (isWhitespace(next));
+            } while (isLineSeparator(next) || isSpaceSeparator(next));
             return new Tokenizer.Token("whitespace", this.pop(count), value);
+        }
+        if (next === 0x002F) {
+            // A slash
+            if (this.peek(1) === 0x002A) {
+                // A slash followed by an asterisk
+                let previous = -1;
+                let count = 2;
+                let value = "/*";
+                next = this.peek(count);
+                do {
+                    if (previous === 0x000D && next === 0x000A) {
+                        // Collapse "\r\n" to "\n"
+                    } else if (isLineSeparator(next)) {
+                        // Normalize all line separators to "\n"
+                        value += "\n";
+                    } else if (isSpaceSeparator(next)) {
+                        // Normalize all spaces to " "
+                        value += " ";
+                    } else {
+                        // Non-whitespace characters
+                        value += String.fromCodePoint(next);
+                    }
+                    previous = next;
+                    next = this.peek(++count);
+                } while (previous != 0x002A || next !== 0x002F);
+                return new Tokenizer.Token("comment", this.pop(count + 1), value + "/");
+            }
+            if (this.peek(1) === 0x002F) {
+                // Two slashes
+                let count = 2;
+                let value = "//";
+                next = this.peek(count);
+                while (next >= 0) {
+                    if (isLineSeparator(next)) {
+                        // Normalize all line separators to "\n"
+                        value += "\n";
+                        count++;
+                        break;
+                    } else if (isSpaceSeparator(next)) {
+                        // Normalize all spaces to " "
+                        value += " ";
+                    } else {
+                        // Non-whitespace characters
+                        value += String.fromCodePoint(next);
+                    }
+                    next = this.peek(++count);
+                }
+                if (next === 0x000D && this.peek(count) === 0x000A) {
+                    // Collapse "\r\n" to "\n"
+                    count++;
+                }
+                return new Tokenizer.Token("comment", this.pop(count), value);
+            }
         }
         if (isIdentifierStart(next)) {
             let count = 0;
             do {
                 next = this.peek(++count);
             } while (isIdentifierStart(next) || isDigit(next));
-            return new Tokenizer.Token("identifier", this.pop(count), 0);
+            const identifier = this.pop(count);
+            return new Tokenizer.Token("identifier", identifier, identifier);
         }
         if (isDigit(next)) {
             let count = 0;
@@ -111,13 +165,15 @@ export class Tokenizer {
             } while (isDigit(next));
             if (next !== 0x002E) {
                 // No decimal point
-                return new Tokenizer.Token("integer", this.pop(count), 0);
+                const output = this.pop(count);
+                return new Tokenizer.Token("integer", output, Number(output));
             }
             next = this.peek(++count);
             while (isDigit(next)) {
                 next = this.peek(++count);
             }
-            return new Tokenizer.Token("float", this.pop(count), 0);
+            const output = this.pop(count);
+            return new Tokenizer.Token("float", output, Number(output));
         }
         if (next === 0x0022) {
             // A double quote
@@ -125,22 +181,11 @@ export class Tokenizer {
             do {
                 next = this.peek(count++);
             } while (next !== 0x0022);
-            return new Tokenizer.Token("string", this.pop(count), 0);
+            const output = this.pop(count);
+            return new Tokenizer.Token("string", output, output.slice(1, -1));
         }
-        if (next === 0x002F) {
-            // A slash
-            if (this.peek(1) === 0x002A) {
-                // A slash followed by an asterisk
-                let previous = -1;
-                let count = 2;
-                do {
-                    previous = next;
-                    next = this.peek(count++);
-                } while (previous != 0x002A || next !== 0x002F);
-                return new Tokenizer.Token("comment", this.pop(count), 0);
-            }
-        }
-        return new Tokenizer.Token("operator", this.pop(1), 0);
+        const output = this.pop(1);
+        return new Tokenizer.Token("symbol", output, output);
     }
     static fromString(input: string): Tokenizer {
         return new Tokenizer(new InputString(input));
@@ -148,7 +193,13 @@ export class Tokenizer {
 }
 
 export namespace Tokenizer {
-    export type TokenType = "whitespace" | "identifier" | "integer" | "float" | "string" | "operator" | "comment";
+    export class TokenizerError extends Error {
+        constructor(message: string) {
+            super(message);
+            this.name = "TokenizerError";
+        }
+    }
+    export type TokenType = "whitespace" | "comment" | "identifier" | "integer" | "float" | "string" | "symbol";
     export class Token {
         constructor(
             public readonly type: TokenType,
