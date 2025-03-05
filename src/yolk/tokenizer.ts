@@ -178,11 +178,108 @@ export class Tokenizer {
         if (next === 0x0022) {
             // A double quote
             let count = 1;
-            do {
+            let value = "";
+            for (;;) {
+                const previous = next;
                 next = this.peek(count++);
-            } while (next !== 0x0022);
-            const output = this.pop(count);
-            return new Tokenizer.Token("string", output, output.slice(1, -1));
+                if (previous === 0x005C) {
+                    // Backslash
+                    switch (next) {
+                        case 0x0022: // Double quote
+                            value += "\"";
+                            break;
+                        case 0x0030: // Null
+                            value += "\0";
+                            break;
+                        case 0x005C: // Backslash
+                            value += "\\";
+                            next = -1;
+                            break;
+                        case 0x0061: // Alert
+                            value += "\u0007";
+                            break;
+                        case 0x0062: // Backspace
+                            value += "\b";
+                            break;
+                        case 0x0065: // Escape
+                            value += "\u001B";
+                            break;
+                        case 0x0066: // Form feed
+                            value += "\f";
+                            break;
+                        case 0x006E: // New line
+                            value += "\n";
+                            break;
+                        case 0x0072: // Carriage return
+                            value += "\r";
+                            break;
+                        case 0x0074: // Horizontal tab
+                            value += "\t";
+                            break;
+                        case 0x0075: // Unicode escape
+                            // \u+hhhhhh;
+                            if (this.peek(count) === 0x002B) { // Plus
+                                let codepoint = 0;
+                                let digits = 0;
+                                next = this.peek(++count);
+                                while (next !== 0x003B) { // Semicolon
+                                    if (next < 0) {
+                                        throw new Tokenizer.TokenizerError("Unterminated Unicode escape sequence");
+                                    } else if (next >= 0x0030 && next <= 0x0039) {
+                                        codepoint = codepoint * 16 + next - 0x0030;
+                                    } else if (next >= 0x0041 && next <= 0x0046) {
+                                        codepoint = codepoint * 16 + next - 0x0041 + 10;
+                                    } else if (next >= 0x0061 && next <= 0x0066) {
+                                        codepoint = codepoint * 16 + next - 0x0061 + 10;
+                                    } else {
+                                        throw new Tokenizer.TokenizerError("Invalid hexadecimal digit in Unicode escape sequence");
+                                    }
+                                    if (++digits > 6) {
+                                        throw new Tokenizer.TokenizerError("Too many hexadecimal digits in Unicode escape sequence");
+                                    }
+                                    next = this.peek(++count);
+                                }
+                                if (digits === 0) {
+                                    throw new Tokenizer.TokenizerError("Empty Unicode escape sequence");
+                                }
+                                if (codepoint > 0x10FFFF) {
+                                    throw new Tokenizer.TokenizerError("Unicode codepoint out of range");
+                                }
+                                value += String.fromCodePoint(codepoint);
+                                count++;
+                            } else {
+                                throw new Tokenizer.TokenizerError("Expected '+' in Unicode escape sequence");
+                            }
+                            break;
+                        case 0x0076: // Vertical tab
+                            value += "\v";
+                            break;
+                        default:
+                            if (isLineSeparator(next)) {
+                                // Multi-line string
+                                if (next === 0x000D && this.peek(count) === 0x000A) {
+                                    // Collapse "\r\n" to "\n"
+                                    count++;
+                                }
+                            } else {
+                                throw new Tokenizer.TokenizerError("Invalid string escape sequence");
+                            }
+                            break;
+                    }
+                } else if (next === 0x0022) {
+                    // An unescaped double quote
+                    break;
+                } else if (next === 0x005C) {
+                    // An unescaped backslash
+                } else if (next < 0) {
+                    // Premature end of input
+                    throw new Tokenizer.TokenizerError("Unterminated string");
+                } else {
+                    // Any other character
+                    value += String.fromCodePoint(next);
+                }
+            }
+            return new Tokenizer.Token("string", this.pop(count), value);
         }
         const output = this.pop(1);
         return new Tokenizer.Token("symbol", output, output);

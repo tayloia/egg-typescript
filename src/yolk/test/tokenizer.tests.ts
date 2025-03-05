@@ -5,11 +5,11 @@ import { Tokenizer } from "../tokenizer";
 describe("Tokenizer", function() {
     function tokenizeOne(input: string): Tokenizer.Token {
         const tokenizer = Tokenizer.fromString(input);
-        const token = tokenizer.take()!;
+        const token = tokenizer.take();
         expect(token).not.undefined;
-        expect(token.raw).equal(input);
+        expect(token?.raw).equal(input);
         expect(tokenizer.take()).undefined;
-        return token;
+        return token!;
     }
     function tokenizeRaw(input: string): string[] {
         const tokenizer = Tokenizer.fromString(input);
@@ -83,13 +83,48 @@ describe("Tokenizer", function() {
     });
     describe("strings", function() {
         [
-            ["\"hello world\"", "hello world"],
-            ["\"\"", ""],
-        ].forEach(([input, expected]) => it(`should parse string "${input}"`, function() {
-            const token = tokenizeOne(input);
+            "hello world",
+            "quote=\"",
+            "backslash=\\",
+            "backspace=\b",
+            "formfeed=\f",
+            "newline=\n",
+            "return=\r",
+            "tab=\t",
+            "",
+        ].forEach(input => it(`should parse string ${JSON.stringify(input)}`, function() {
+            const token = tokenizeOne(JSON.stringify(input));
             expect(token.type).equal("string");
-            expect(token.value).equal(expected);
+            expect(token.value).equal(input);
         }));
+        "0,1,12,123,1234,12345,F,FF,FFF,FFFF,FFFFF,10FFFF".split(",").forEach(hex => {
+            const input = `"unicode=\\u+${hex};"`;
+            it(`should parse string ${input}`, function() {
+                const token = tokenizeOne(input);
+                expect(token.type).equal("string");
+                expect(token.value).equal("unicode=" + String.fromCodePoint(Number.parseInt(hex, 16)));
+            });
+        });
+        it("should parse string with NUL", function() {
+            const token = tokenizeOne(`"nul=\\0"`);
+            expect(token.type).equal("string");
+            expect(token.value).equal("nul=\0");
+        });
+        it("should parse string with VTAB", function() {
+            const token = tokenizeOne(`"vtab=\\v"`);
+            expect(token.type).equal("string");
+            expect(token.value).equal("vtab=\u000B");
+        });
+        it("should parse string with ESCAPE", function() {
+            const token = tokenizeOne(`"escape=\\e"`);
+            expect(token.type).equal("string");
+            expect(token.value).equal("escape=\u001B");
+        });
+        it("should parse multi-line strings", function() {
+            const token = tokenizeOne(`"alpha\\\nbeta\\\rgamma\\\r\\\ndelta"`);
+            expect(token.type).equal("string");
+            expect(token.value).equal("alphabetagammadelta");
+        });
     });
     describe("operators", function() {
         let s = "!#$%&'()*+,-./:;<=>?@[\\]^`{|}~";
