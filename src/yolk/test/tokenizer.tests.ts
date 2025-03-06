@@ -11,13 +11,35 @@ describe("Tokenizer", function() {
         expect(tokenizer.take()).undefined;
         return token!;
     }
-    function tokenizeRaw(input: string): string[] {
+    function tokenizeMany(input: string): string[] {
         const tokenizer = Tokenizer.fromString(input);
-        let output = [];
-        let token;
+        const output: string[] = [];
+        let token: Tokenizer.Token | undefined;
+        let raw = "";
         while (token = tokenizer.take()) {
-            output.push(token.raw);
+            switch (token.type) {
+                case "whitespace":
+                    break;
+                case "comment":
+                    output.push(`${token.value}`);
+                    break;
+                case "identifier":
+                    output.push(`${token.value}`);
+                    break;
+                case "integer":
+                case "float":
+                case "string":
+                    output.push(JSON.stringify(token.value));
+                    break;
+                case "punctuation":
+                    output.push(`'${token.value}'`);
+                    break;
+                default:
+                    expect.fail(`Unexpected token type: ${JSON.stringify(token)}`);
+            }
+            raw += token.raw;
         }
+        expect(raw).equal(input);
         return output;
     }
     describe("whitespace", function() {
@@ -126,11 +148,11 @@ describe("Tokenizer", function() {
             expect(token.value).equal("alphabetagammadelta");
         });
     });
-    describe("operators", function() {
+    describe("punctuation", function() {
         let s = "!#$%&'()*+,-./:;<=>?@[\\]^`{|}~";
         [...s].forEach(input => it(`should parse operator "${input}"`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equal("symbol");
+            expect(token.type).equal("punctuation");
             expect(token.value).equal(input);
         }));
     });
@@ -144,6 +166,25 @@ describe("Tokenizer", function() {
             const token = tokenizeOne(input);
             expect(token.type).equal("comment");
             expect(token.value).equal(expected);
+        }));
+    });
+    describe("statements", function() {
+        [
+            [
+                `print("hello world", /* pi */ 3.14159, true)`,
+                "print",
+                "'('",
+                "\"hello world\"",
+                "','",
+                "/* pi */",
+                "3.14159",
+                "','",
+                "true",
+                "')'"
+            ],
+        ].forEach(([input, ...expected]) => it(`should parse statement '${input}'`, function() {
+            const actual = tokenizeMany(input);
+            expect(actual).deep.equal(expected);
         }));
     });
 });

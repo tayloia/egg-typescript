@@ -282,7 +282,7 @@ export class Tokenizer {
             return new Tokenizer.Token("string", this.pop(count), value);
         }
         const output = this.pop(1);
-        return new Tokenizer.Token("symbol", output, output);
+        return new Tokenizer.Token("punctuation", output, output);
     }
     static fromString(input: string): Tokenizer {
         return new Tokenizer(new InputString(input));
@@ -296,7 +296,7 @@ export namespace Tokenizer {
             this.name = "TokenizerError";
         }
     }
-    export type TokenType = "whitespace" | "comment" | "identifier" | "integer" | "float" | "string" | "symbol";
+    export type TokenType = "whitespace" | "comment" | "identifier" | "integer" | "float" | "string" | "punctuation";
     export class Token {
         constructor(
             public readonly type: TokenType,
