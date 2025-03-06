@@ -1,3 +1,5 @@
+import { BaseException } from "./exception";
+
 function isLineSeparator(codepoint: number): boolean {
     switch (codepoint) {
         case 0x000A: // Line feed
@@ -58,6 +60,8 @@ class InputString implements Tokenizer.Input {
 
 export class Tokenizer {
     private taken: number[] = [];
+    private line: number = 1;
+    private column: number = 1;
     private constructor(private input: Tokenizer.Input) {}
     private peek(lookahead: number = 0) {
         // Fill the taken array with enough characters to satisfy the lookahead
@@ -74,6 +78,14 @@ export class Tokenizer {
         return output;
     }
     take(): Tokenizer.Token | undefined {
+        const line = this.line;
+        const column = this.column;
+        const success = (type: Tokenizer.TokenType, raw: string, value: number | string) => {
+            return new Tokenizer.Token(type, raw, value, line, column);
+        }
+        const fail = (message: string, parameters: Record<string, unknown> = {}) => {
+            throw new Tokenizer.Exception("{location}" + message, { line: this.line, column: this.column, ...parameters });
+        }
         let next = this.peek();
         if (next < 0) {
             return undefined;
@@ -95,7 +107,7 @@ export class Tokenizer {
                 previous = next;
                 next = this.peek(++count);
             } while (isLineSeparator(next) || isSpaceSeparator(next));
-            return new Tokenizer.Token("whitespace", this.pop(count), value);
+            return success("whitespace", this.pop(count), value);
         }
         if (next === 0x002F) {
             // A slash
@@ -121,7 +133,7 @@ export class Tokenizer {
                     previous = next;
                     next = this.peek(++count);
                 } while (previous != 0x002A || next !== 0x002F);
-                return new Tokenizer.Token("comment", this.pop(count + 1), value + "/");
+                return success("comment", this.pop(count + 1), value + "/");
             }
             if (this.peek(1) === 0x002F) {
                 // Two slashes
@@ -147,43 +159,49 @@ export class Tokenizer {
                     // Collapse "\r\n" to "\n"
                     count++;
                 }
-                return new Tokenizer.Token("comment", this.pop(count), value);
+                return success("comment", this.pop(count), value);
             }
         }
         if (isIdentifierStart(next)) {
             let count = 0;
             do {
                 next = this.peek(++count);
-            } while (isIdentifierStart(next) || isDigit(next));
+            } while (isIdentifierStart(next) || isDigit(next) || next === 0x005F);
             const identifier = this.pop(count);
-            return new Tokenizer.Token("identifier", identifier, identifier);
+            return success("identifier", identifier, identifier);
         }
         if (isDigit(next)) {
             let count = 0;
             do {
                 next = this.peek(++count);
             } while (isDigit(next));
+            if (isIdentifierStart(next) || next === 0x005F) {
+                this.column += count;
+                fail(`Invalid character in number literal: '{character}'`, { character: String.fromCodePoint(next) });
+            }
             if (next !== 0x002E) {
                 // No decimal point
                 const output = this.pop(count);
-                return new Tokenizer.Token("integer", output, Number(output));
+                return success("integer", output, Number(output));
             }
             next = this.peek(++count);
             while (isDigit(next)) {
                 next = this.peek(++count);
             }
             const output = this.pop(count);
-            return new Tokenizer.Token("float", output, Number(output));
+            return success("float", output, Number(output));
         }
         if (next === 0x0022) {
             // A double quote
-            let count = 1;
             let value = "";
+            let count = 1;
+            this.column++;
             for (;;) {
                 const previous = next;
                 next = this.peek(count++);
                 if (previous === 0x005C) {
                     // Backslash
+                    this.column++;
                     switch (next) {
                         case 0x0022: // Double quote
                             value += "\"";
@@ -224,31 +242,34 @@ export class Tokenizer {
                                 next = this.peek(++count);
                                 while (next !== 0x003B) { // Semicolon
                                     if (next < 0) {
-                                        throw new Tokenizer.TokenizerError("Unterminated Unicode escape sequence");
-                                    } else if (next >= 0x0030 && next <= 0x0039) {
+                                        fail("Unterminated Unicode escape sequence");
+                                    }
+                                    this.column++;
+                                    if (next >= 0x0030 && next <= 0x0039) {
                                         codepoint = codepoint * 16 + next - 0x0030;
                                     } else if (next >= 0x0041 && next <= 0x0046) {
                                         codepoint = codepoint * 16 + next - 0x0041 + 10;
                                     } else if (next >= 0x0061 && next <= 0x0066) {
                                         codepoint = codepoint * 16 + next - 0x0061 + 10;
                                     } else {
-                                        throw new Tokenizer.TokenizerError("Invalid hexadecimal digit in Unicode escape sequence");
+                                        fail("Invalid hexadecimal digit in Unicode escape sequence");
                                     }
                                     if (++digits > 6) {
-                                        throw new Tokenizer.TokenizerError("Too many hexadecimal digits in Unicode escape sequence");
+                                        fail("Too many hexadecimal digits in Unicode escape sequence");
                                     }
                                     next = this.peek(++count);
                                 }
+                                this.column++;
                                 if (digits === 0) {
-                                    throw new Tokenizer.TokenizerError("Empty Unicode escape sequence");
+                                    fail("Empty Unicode escape sequence");
                                 }
                                 if (codepoint > 0x10FFFF) {
-                                    throw new Tokenizer.TokenizerError("Unicode codepoint out of range");
+                                    fail("Unicode codepoint out of range");
                                 }
                                 value += String.fromCodePoint(codepoint);
                                 count++;
                             } else {
-                                throw new Tokenizer.TokenizerError("Expected '+' in Unicode escape sequence");
+                                fail("Expected '+' in Unicode escape sequence", { column: this.column - 1 });
                             }
                             break;
                         case 0x0076: // Vertical tab
@@ -261,8 +282,10 @@ export class Tokenizer {
                                     // Collapse "\r\n" to "\n"
                                     count++;
                                 }
+                                this.line++;
+                                this.column = 1;
                             } else {
-                                throw new Tokenizer.TokenizerError("Invalid string escape sequence");
+                                fail("Invalid string escape sequence", { column: this.column - 1 });
                             }
                             break;
                     }
@@ -271,18 +294,20 @@ export class Tokenizer {
                     break;
                 } else if (next === 0x005C) {
                     // An unescaped backslash
+                    this.column++;
                 } else if (next < 0) {
                     // Premature end of input
-                    throw new Tokenizer.TokenizerError("Unterminated string");
+                    fail("Unterminated string", { column: this.column - 1 });
                 } else {
                     // Any other character
                     value += String.fromCodePoint(next);
+                    this.column++;
                 }
             }
-            return new Tokenizer.Token("string", this.pop(count), value);
+            return success("string", this.pop(count), value);
         }
         const output = this.pop(1);
-        return new Tokenizer.Token("punctuation", output, output);
+        return success("punctuation", output, output);
     }
     static fromString(input: string): Tokenizer {
         return new Tokenizer(new InputString(input));
@@ -290,10 +315,9 @@ export class Tokenizer {
 }
 
 export namespace Tokenizer {
-    export class TokenizerError extends Error {
-        constructor(message: string) {
-            super(message);
-            this.name = "TokenizerError";
+    export class Exception extends BaseException {
+        constructor(message: string, parameters: Record<string, unknown> = {}) {
+            super(Exception.name, message, parameters);
         }
     }
     export type TokenType = "whitespace" | "comment" | "identifier" | "integer" | "float" | "string" | "punctuation";
@@ -302,6 +326,8 @@ export namespace Tokenizer {
             public readonly type: TokenType,
             public readonly raw: string,
             public readonly value: string | number,
+            public readonly line: number,
+            public readonly column: number,
         ) {}
     }
     export interface Input {

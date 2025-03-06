@@ -42,6 +42,9 @@ describe("Tokenizer", function() {
         expect(raw).equal(input);
         return output;
     }
+    function tokenizeBad(input: string): () => unknown {
+        return () => Tokenizer.fromString(input).take();
+    }
     describe("whitespace", function() {
         it("should parse empty input", function() {
             const tokenizer = Tokenizer.fromString("");
@@ -90,6 +93,11 @@ describe("Tokenizer", function() {
             expect(token.type).equal("integer");
             expect(token.value).equal(expected);
         }));
+        it("should reject bad integers", function() {
+            expect(tokenizeBad("1e6")).throws("(1,2): Invalid character in number literal: 'e'");
+            expect(tokenizeBad("0x00")).throws("(1,2): Invalid character in number literal: 'x'");
+            expect(tokenizeBad("012_345")).throws("(1,4): Invalid character in number literal: '_'");
+        })
     });
     describe("floats", function() {
         const cases: [string, number][] = [
@@ -146,6 +154,29 @@ describe("Tokenizer", function() {
             const token = tokenizeOne(`"alpha\\\nbeta\\\rgamma\\\r\\\ndelta"`);
             expect(token.type).equal("string");
             expect(token.value).equal("alphabetagammadelta");
+        });
+        it("should reject unknown escape sequences", function() {
+            expect(tokenizeBad(`"\\z`)).throws("(1,3): Invalid string escape sequence");
+        });
+        it("should reject bad Unicode escape sequences", function() {
+            expect(tokenizeBad(`"\\u`)).throws("(1,3): Expected '+' in Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+`)).throws("(1,4): Unterminated Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+F`)).throws("(1,5): Unterminated Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+FF`)).throws("(1,6): Unterminated Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+FFF`)).throws("(1,7): Unterminated Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+FFFF`)).throws("(1,8): Unterminated Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+FFFFF`)).throws("(1,9): Unterminated Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+FFFFFF`)).throws("(1,10): Unterminated Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+FFFFFFF`)).throws("(1,11): Too many hexadecimal digits in Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+;`)).throws("(1,5): Empty Unicode escape sequence");
+            expect(tokenizeBad(`"\\u+FFFFFF;`)).throws("(1,11): Unicode codepoint out of range");
+            expect(tokenizeBad(`"\\u+Z;`)).throws("(1,5): Invalid hexadecimal digit in Unicode escape sequence");
+        });
+        it("should reject unterminated strings", function() {
+            expect(tokenizeBad(`"`)).throws("(1,1): Unterminated string");
+            expect(tokenizeBad(`"\\t\\t\\t`)).throws("(1,7): Unterminated string");
+            expect(tokenizeBad(`"hello world`)).throws("(1,12): Unterminated string");
+            expect(tokenizeBad(`"\\\r\n12345`)).throws("(2,5): Unterminated string");
         });
     });
     describe("punctuation", function() {

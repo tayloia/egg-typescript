@@ -1,9 +1,20 @@
-export class Exception extends Error {
-    constructor(private _message: string, public parameters: Record<string, unknown> = {}) {
+export class BaseException extends Error {
+    parameters: Record<string, unknown>;
+    protected constructor(name: string, private _message: string, parameters: Record<string, unknown>) {
         super();
+        this.parameters = { ...parameters, name: name };
     }
     get message(): string {
         return Exception.format(this._message, this.parameters);
+    }
+    get name(): string {
+        return this.parameters.name as string;
+    }
+}
+
+export class Exception extends BaseException {
+    constructor(message: string, parameters: Record<string, unknown> = {}) {
+        super(Exception.name, message, parameters);
     }
     static location(source: any, line: any, column: any): string {
         if (column) {

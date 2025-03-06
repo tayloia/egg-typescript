@@ -1,6 +1,6 @@
 import { expect } from "chai";
 
-import { Exception } from "../exception";
+import { Exception, BaseException } from "../exception";
 
 describe("Exception", function() {
     it("should support format helper", function() {
@@ -27,6 +27,14 @@ describe("Exception", function() {
         exception.parameters.h = "goodbye";
         expect(exception.message).equal("goodbye world");
     });
+    it("should format name", function() {
+        const exception = new Exception("[{name}]");
+        expect(exception.message).equal("[Exception]");
+        expect(exception.name).equal("Exception");
+        exception.parameters.name = "Overwritten";
+        expect(exception.message).equal("[Overwritten]");
+        expect(exception.name).equal("Overwritten");
+    });
     it("should format location", function() {
         const exception = new Exception("{location}error", {source:"source", line:1, column:2});
         expect(exception.message).equal("source(1,2): error");
@@ -36,6 +44,16 @@ describe("Exception", function() {
     it("should throw Error type", function() {
         expect(() => {
             throw new Exception("{h} {w}", {h:"hello", w:"world"});
-        }).throw(Error).property("message").equal("hello world");
+        }).throws(Error).property("message").equal("hello world");
+    });
+    it("should support custom exceptions", function() {
+        class CustomException extends BaseException {
+            constructor(message: string, parameters: Record<string, unknown> = {}) {
+                super(CustomException.name, message, parameters);
+            }
+        }
+        expect(() => {
+            throw new CustomException("{h} {w}", {h:"hello", w:"world"});
+        }).throws(CustomException).includes({message: "hello world", name: "CustomException"});
     });
 });
