@@ -179,7 +179,13 @@ describe("Tokenizer", function() {
             expect(tokenizeBad(`"`)).throws("(1,1): Unterminated string");
             expect(tokenizeBad(`"\\t\\t\\t`)).throws("(1,1): Unterminated string");
             expect(tokenizeBad(`"hello world`)).throws("(1,1): Unterminated string");
-            expect(tokenizeBad(`"\\\r\n12345`)).throws("(1,1): Unterminated string");
+            expect(tokenizeBad(`"\\r\\n12345`)).throws("(1,1): Unterminated string");
+        });
+        it("should reject end of line within strings", function() {
+            expect(tokenizeBad(`"\n`)).throws("(1,1): End of line within string literal");
+            expect(tokenizeBad(`"\\t\\t\\t\r`)).throws("(1,7): End of line within string literal");
+            expect(tokenizeBad(`"hello world\n`)).throws("(1,12): End of line within string literal");
+            expect(tokenizeBad(`"\\r\\n12345\r\n`)).throws("(1,10): End of line within string literal");
         });
     });
     describe("punctuation", function() {
@@ -205,29 +211,44 @@ describe("Tokenizer", function() {
             expect(tokenizeBad(`/* hello`)).throws("(1,1): Unterminated comment");
         });
     });
+    const inputs = [
+        //12345678901234567890123456789012345678901234567890
+        `print("hello world", /* pi */ 3.14159, true)`,
+        `print(/*\npi\r*/)`,
+        `print("\\\rhello\\\nworld")`,
+        `var tab = "\t";`,
+    ];
     describe("locations", function() {
         [
-            //12345678901234567890123456789012345678901234567890
-            [`print("hello world", /* pi */ 3.14159, true)`, "[[1,1],[1,6],[1,7],[1,20],[1,21],[1,22],[1,30],[1,31],[1,38],[1,39],[1,40],[1,44]]"],
-        ].forEach(([input, expected]) => it(`should accept '${input}'`, function() {
-            const actual = JSON.stringify([...tokenize(input)].map(token => [token.line, token.column]));
+            "[[1,1],[1,6],[1,7],[1,20],[1,21],[1,22],[1,30],[1,31],[1,38],[1,39],[1,40],[1,44]]",
+            "[[1,1],[1,6],[1,7],[3,3]]",
+            "[[1,1],[1,6],[1,7],[3,7]]",
+            "[[1,1],[1,4],[1,5],[1,8],[1,9],[1,10],[1,11],[1,14]]",
+        ].forEach((expected, index) => it(`should accept '${inputs[index]}'`, function() {
+            const actual = JSON.stringify([...tokenize(inputs[index])].map(token => [token.line, token.column]));
             expect(actual).equal(expected);
         }));
     });
     describe("values", function() {
         [
-            [`print("hello world", /* pi */ 3.14159, true)`, "print ( hello_world , _ /*_pi_*/ _ 3.14159 , _ true )"],
-        ].forEach(([input, expected]) => it(`should accept '${input}'`, function() {
-            const actual = [...tokenize(input)].map(token => String(token.value).replace(/[^!-~]+/g, "_")).join(" ");
+            "print ( hello_world , _ /*_pi_*/ _ 3.14159 , _ true )",
+            "print ( /*_pi_*/ )",
+            "print ( helloworld )",
+            "var _ tab _ = _ _ ;",
+        ].forEach((expected, index) => it(`should accept '${inputs[index]}'`, function() {
+            const actual = [...tokenize(inputs[index])].map(token => String(token.value).replace(/[^!-~]+/g, "_")).join(" ");
             expect(actual).equal(expected);
         }));
     });
     describe("statements", function() {
         [
-            [`print("hello world", /* pi */ 3.14159, true)`, `print ( "hello world" , 3.14159 , true )`],
-        ].forEach(([input, expected]) => it(`should accept '${input}'`, function() {
+            `print ( "hello world" , 3.14159 , true )`,
+            `print ( /*_pi_*/ )`,
+            `print ( helloworld )`,
+            `var _ tab _ = _ _ ;`,
+        ].forEach((expected, index) => it(`should accept '${inputs[index]}'`, function() {
             const actual: string[] = [];
-            for (let token of tokenize(input)) {
+            for (let token of tokenize(inputs[index])) {
                 switch (token.type) {
                     case "whitespace":
                     case "comment":

@@ -322,6 +322,10 @@ export class Tokenizer {
                     this.line = line;
                     this.column = column;
                     fail("Unterminated string");
+                } else if (isLineSeparator(next)) {
+                    // Newline in string
+                    this.column--;
+                    fail("End of line within string literal");
                 } else {
                     // Any other character
                     value += String.fromCodePoint(next);
@@ -343,7 +347,7 @@ export class Tokenizer {
 export namespace Tokenizer {
     export class Exception extends BaseException {
         constructor(message: string, parameters: Record<string, unknown> = {}) {
-            super(Exception.name, message, parameters);
+            super("TokenizerException", message, parameters);
         }
     }
     export type TokenType = "whitespace" | "comment" | "identifier" | "integer" | "float" | "string" | "punctuation";
