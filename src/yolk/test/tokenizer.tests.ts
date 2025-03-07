@@ -223,16 +223,16 @@ describe("Tokenizer", function() {
             const actual: string[] = [];
             for (const token of tokenize(inputs[index])) {
                 switch (token.type) {
-                    case "whitespace":
-                    case "comment":
+                    case Tokenizer.Type.Whitespace:
+                    case Tokenizer.Type.Comment:
                         break;
-                    case "identifier":
-                    case "punctuation":
+                    case Tokenizer.Type.Identifier:
+                    case Tokenizer.Type.Punctuation:
                         actual.push(`${token.value}`);
                         break;
-                    case "integer":
-                    case "float":
-                    case "string":
+                    case Tokenizer.Type.Integer:
+                    case Tokenizer.Type.Float:
+                    case Tokenizer.Type.String:
                         actual.push(JSON.stringify(token.value));
                         break;
                     default:

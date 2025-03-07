@@ -17,5 +17,10 @@ describe("Parser", function() {
             const output = parser.parse();
             expect(output).includes({errors:0, warnings:0});
         });
+        it("should accept print", function() {
+            const parser = Parser.fromString(" print(\"hello world\");"); // WIBBLE
+            const output = parser.parse();
+            expect(output).includes({errors:0, warnings:0});
+        });
     });
 });

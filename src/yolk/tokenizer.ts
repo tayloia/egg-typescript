@@ -80,7 +80,7 @@ export class Tokenizer {
     take(): Tokenizer.Token | undefined {
         const line = this.line;
         const column = this.column;
-        const success = (type: Tokenizer.TokenType, raw: string, value: number | string) => {
+        const success = (type: Tokenizer.Type, raw: string, value: number | string) => {
             return new Tokenizer.Token(type, raw, value, line, column);
         }
         const fail = (message: string) => {
@@ -108,7 +108,7 @@ export class Tokenizer {
                 next = this.peek(++count);
             } while (isLineSeparator(next) || isSpaceSeparator(next));
             this.column += count;
-            return success("whitespace", this.pop(count), value);
+            return success(Tokenizer.Type.Whitespace, this.pop(count), value);
         }
         if (next === 0x002F) {
             // A slash
@@ -145,7 +145,7 @@ export class Tokenizer {
                     next = this.peek(++count);
                 } while (previous != 0x002A || next !== 0x002F);
                 this.column++;
-                return success("comment", this.pop(count + 1), value + "/");
+                return success(Tokenizer.Type.Comment, this.pop(count + 1), value + "/");
             }
             if (this.peek(1) === 0x002F) {
                 // Two slashes
@@ -172,7 +172,7 @@ export class Tokenizer {
                     count++;
                 }
                 this.column += count;
-                return success("comment", this.pop(count), value);
+                return success(Tokenizer.Type.Comment, this.pop(count), value);
             }
         }
         if (isIdentifierStart(next)) {
@@ -182,7 +182,7 @@ export class Tokenizer {
             } while (isIdentifierStart(next) || isDigit(next) || next === 0x005F);
             const identifier = this.pop(count);
             this.column += count;
-            return success("identifier", identifier, identifier);
+            return success(Tokenizer.Type.Identifier, identifier, identifier);
         }
         if (isDigit(next)) {
             let count = 0;
@@ -197,7 +197,7 @@ export class Tokenizer {
                 // No decimal point
                 const output = this.pop(count);
                 this.column += count;
-                return success("integer", output, Number(output));
+                return success(Tokenizer.Type.Integer, output, Number(output));
             }
             next = this.peek(++count);
             while (isDigit(next)) {
@@ -205,7 +205,7 @@ export class Tokenizer {
             }
             const output = this.pop(count);
             this.column += count;
-            return success("float", output, Number(output));
+            return success(Tokenizer.Type.Float, output, Number(output));
         }
         if (next === 0x0022) {
             // A double quote
@@ -333,11 +333,11 @@ export class Tokenizer {
                 }
             }
             this.column++;
-            return success("string", this.pop(count), value);
+            return success(Tokenizer.Type.String, this.pop(count), value);
         }
         const output = this.pop(1);
         this.column++;
-        return success("punctuation", output, output);
+        return success(Tokenizer.Type.Punctuation, output, output);
     }
     static fromString(input: string): Tokenizer {
         return new Tokenizer(new InputString(input));
@@ -350,10 +350,18 @@ export namespace Tokenizer {
             super("TokenizerException", message, parameters);
         }
     }
-    export type TokenType = "whitespace" | "comment" | "identifier" | "integer" | "float" | "string" | "punctuation";
+    export enum Type {
+        Whitespace,
+        Comment,
+        Identifier,
+        Integer,
+        Float,
+        String,
+        Punctuation
+    };
     export class Token {
         constructor(
-            public readonly type: TokenType,
+            public readonly type: Type,
             public readonly raw: string,
             public readonly value: string | number,
             public readonly line: number,
