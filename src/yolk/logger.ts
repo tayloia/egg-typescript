@@ -1,22 +1,22 @@
 export abstract class Logger {
-    abstract log(severity: Logger.Severity, message: string, parameters?: Logger.Parameters): void;
+    abstract log(entry: Logger.Entry): void;
     error(message: string, parameters?: Logger.Parameters) {
-        this.log(Logger.Severity.Error, message, parameters)
+        this.log(new Logger.Entry(Logger.Severity.Error, message, parameters));
     }
     warning(message: string, parameters?: Logger.Parameters) {
-        this.log(Logger.Severity.Warning, message, parameters)
+        this.log(new Logger.Entry(Logger.Severity.Warning, message, parameters));
     }
     info(message: string, parameters?: Logger.Parameters) {
-        this.log(Logger.Severity.Info, message, parameters)
+        this.log(new Logger.Entry(Logger.Severity.Info, message, parameters));
     }
     debug(message: string, parameters?: Logger.Parameters) {
-        this.log(Logger.Severity.Debug, message, parameters)
+        this.log(new Logger.Entry(Logger.Severity.Debug, message, parameters));
     }
     trace(message: string, parameters?: Logger.Parameters) {
-        this.log(Logger.Severity.Trace, message, parameters)
+        this.log(new Logger.Entry(Logger.Severity.Trace, message, parameters));
     }
     print(message: string, parameters?: Logger.Parameters) {
-        this.log(Logger.Severity.Print, message, parameters)
+        this.log(new Logger.Entry(Logger.Severity.Print, message, parameters));
     }
     static location(source: unknown, line: unknown, column: unknown): string {
         if (column) {
@@ -47,7 +47,7 @@ export abstract class Logger {
 
 export namespace Logger {
     export enum Severity {
-        Error, Warning, Info, Debug, Trace, Print
+        Print, Trace, Debug, Info, Warning, Error
     }
     export type Parameters = Record<string, unknown>;
     export class Entry {
@@ -59,9 +59,9 @@ export namespace Logger {
 }
 
 export class ConsoleLogger extends Logger {
-    log(severity: Logger.Severity, message: string, parameters?: Logger.Parameters): void {
-        message = parameters ? Logger.format(message, parameters) : message;
-        switch (severity) {
+    log(entry: Logger.Entry): void {
+        const message = entry.format();
+        switch (entry.severity) {
             case Logger.Severity.Error:
                 console.error(message);
                 break;
@@ -86,8 +86,8 @@ export class ConsoleLogger extends Logger {
 
 export class TestLogger extends Logger {
     logged: Logger.Entry[] = [];
-    log(severity: Logger.Severity, message: string, parameters?: Logger.Parameters): void {
-        this.logged.push(new Logger.Entry(severity, message, parameters));
+    log(entry: Logger.Entry): void {
+        this.logged.push(entry);
     }
     filter(severity: Logger.Severity): string[] {
         return this.logged.filter(log => log.severity === severity).map(log => log.format())

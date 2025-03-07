@@ -16,11 +16,11 @@ class Impl {
         } as Parser.Output;
     }
     log(severity: Logger.Severity, message: string, parameters?: Logger.Parameters): void {
-        this.logger.log(severity, message, parameters);
+        this.logger.log(new Logger.Entry(severity, message, parameters));
     }
     fatal(message: string, parameters?: Logger.Parameters): never {
-        this.logger.log(Logger.Severity.Error, message, parameters);
-        throw new Parser.Exception(message);
+        this.log(Logger.Severity.Error, message, parameters);
+        throw new Parser.Exception(message, parameters);
     }
 }
 
