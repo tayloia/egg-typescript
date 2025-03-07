@@ -83,8 +83,8 @@ export class Tokenizer {
         const success = (type: Tokenizer.TokenType, raw: string, value: number | string) => {
             return new Tokenizer.Token(type, raw, value, line, column);
         }
-        const fail = (message: string, parameters: Record<string, unknown> = {}) => {
-            throw new Tokenizer.Exception("{location}" + message, { line: this.line, column: this.column, ...parameters });
+        const fail = (message: string) => {
+            throw new Tokenizer.Exception("{location}" + message, { line: this.line, column: this.column });
         }
         let next = this.peek();
         if (next < 0) {
@@ -107,6 +107,7 @@ export class Tokenizer {
                 previous = next;
                 next = this.peek(++count);
             } while (isLineSeparator(next) || isSpaceSeparator(next));
+            this.column += count;
             return success("whitespace", this.pop(count), value);
         }
         if (next === 0x002F) {
@@ -116,23 +117,34 @@ export class Tokenizer {
                 let previous = -1;
                 let count = 2;
                 let value = "/*";
+                this.column += 2;
                 next = this.peek(count);
                 do {
-                    if (previous === 0x000D && next === 0x000A) {
+                    if (next < 0) {
+                        // Premature end of input (report the start of the comment)
+                        this.line = line;
+                        this.column = column;
+                        fail("Unterminated comment");
+                    } else if (previous === 0x000D && next === 0x000A) {
                         // Collapse "\r\n" to "\n"
                     } else if (isLineSeparator(next)) {
                         // Normalize all line separators to "\n"
+                        this.line++;
+                        this.column = 1;
                         value += "\n";
                     } else if (isSpaceSeparator(next)) {
                         // Normalize all spaces to " "
+                        this.column++;
                         value += " ";
                     } else {
                         // Non-whitespace characters
+                        this.column++;
                         value += String.fromCodePoint(next);
                     }
                     previous = next;
                     next = this.peek(++count);
                 } while (previous != 0x002A || next !== 0x002F);
+                this.column++;
                 return success("comment", this.pop(count + 1), value + "/");
             }
             if (this.peek(1) === 0x002F) {
@@ -159,6 +171,7 @@ export class Tokenizer {
                     // Collapse "\r\n" to "\n"
                     count++;
                 }
+                this.column += count;
                 return success("comment", this.pop(count), value);
             }
         }
@@ -168,6 +181,7 @@ export class Tokenizer {
                 next = this.peek(++count);
             } while (isIdentifierStart(next) || isDigit(next) || next === 0x005F);
             const identifier = this.pop(count);
+            this.column += count;
             return success("identifier", identifier, identifier);
         }
         if (isDigit(next)) {
@@ -177,11 +191,12 @@ export class Tokenizer {
             } while (isDigit(next));
             if (isIdentifierStart(next) || next === 0x005F) {
                 this.column += count;
-                fail(`Invalid character in number literal: '{character}'`, { character: String.fromCodePoint(next) });
+                fail(`Invalid character in number literal: '${String.fromCodePoint(next)}'`);
             }
             if (next !== 0x002E) {
                 // No decimal point
                 const output = this.pop(count);
+                this.column += count;
                 return success("integer", output, Number(output));
             }
             next = this.peek(++count);
@@ -189,6 +204,7 @@ export class Tokenizer {
                 next = this.peek(++count);
             }
             const output = this.pop(count);
+            this.column += count;
             return success("float", output, Number(output));
         }
         if (next === 0x0022) {
@@ -242,6 +258,8 @@ export class Tokenizer {
                                 next = this.peek(++count);
                                 while (next !== 0x003B) { // Semicolon
                                     if (next < 0) {
+                                        // Report the location of the backslash
+                                        this.column -= digits + 2;
                                         fail("Unterminated Unicode escape sequence");
                                     }
                                     this.column++;
@@ -269,7 +287,9 @@ export class Tokenizer {
                                 value += String.fromCodePoint(codepoint);
                                 count++;
                             } else {
-                                fail("Expected '+' in Unicode escape sequence", { column: this.column - 1 });
+                                // Report the position of the backslash
+                                this.column -= 2;
+                                fail("Expected '+' after '\\u' in Unicode escape sequence");
                             }
                             break;
                         case 0x0076: // Vertical tab
@@ -285,7 +305,9 @@ export class Tokenizer {
                                 this.line++;
                                 this.column = 1;
                             } else {
-                                fail("Invalid string escape sequence", { column: this.column - 1 });
+                                // Report the position of the backslash
+                                this.column--;
+                                fail("Invalid string escape sequence");
                             }
                             break;
                     }
@@ -296,17 +318,21 @@ export class Tokenizer {
                     // An unescaped backslash
                     this.column++;
                 } else if (next < 0) {
-                    // Premature end of input
-                    fail("Unterminated string", { column: this.column - 1 });
+                    // Premature end of input (report the location of the start)
+                    this.line = line;
+                    this.column = column;
+                    fail("Unterminated string");
                 } else {
                     // Any other character
                     value += String.fromCodePoint(next);
                     this.column++;
                 }
             }
+            this.column++;
             return success("string", this.pop(count), value);
         }
         const output = this.pop(1);
+        this.column++;
         return success("punctuation", output, output);
     }
     static fromString(input: string): Tokenizer {
