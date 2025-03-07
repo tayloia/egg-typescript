@@ -9,13 +9,13 @@ describe("Tokenizer", function() {
         for (let token; (token = tokenizer.take()); raw += token.raw) {
             yield token;
         }
-        expect(raw).equal(input);
+        expect(raw).equals(input);
     }
     function tokenizeOne(input: string): Tokenizer.Token {
         const tokenizer = Tokenizer.fromString(input);
         const token = tokenizer.take();
         expect(token).not.undefined;
-        expect(token?.raw).equal(input);
+        expect(token?.raw).equals(input);
         expect(tokenizer.take()).undefined;
         return token!;
     }
@@ -32,20 +32,20 @@ describe("Tokenizer", function() {
         it("should accept ASCII whitespace", function() {
             const input = " \t\f\v\n\r";
             const token = tokenizeOne(input);
-            expect(token.type).equal("whitespace");
-            expect(token.value).equal("  \n\n\n\n");
+            expect(token.type).equals("whitespace");
+            expect(token.value).equals("  \n\n\n\n");
         });
         it("should accept Unicode whitespace", function() {
             const input = "\u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u3000\u0085\u2028\u2029";
             const token = tokenizeOne(input);
-            expect(token.type).equal("whitespace");
-            expect(token.value).equal("                \n\n\n");
+            expect(token.type).equals("whitespace");
+            expect(token.value).equals("                \n\n\n");
         });
         it("should translate CRLF whitespace", function() {
             const input = "\n \r \r\n \n\r";
             const token = tokenizeOne(input);
-            expect(token.type).equal("whitespace");
-            expect(token.value).equal("\n \n \n \n\n");
+            expect(token.type).equals("whitespace");
+            expect(token.value).equals("\n \n \n \n\n");
         });
     });
     describe("identifiers", function() {
@@ -55,8 +55,8 @@ describe("Tokenizer", function() {
             "_",
         ].forEach(input => it(`should accept identifier "${input}"`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equal("identifier");
-            expect(token.value).equal(input);
+            expect(token.type).equals("identifier");
+            expect(token.value).equals(input);
         }));
     });
     describe("integers", function() {
@@ -67,8 +67,8 @@ describe("Tokenizer", function() {
         ];
         cases.forEach(([input, expected]) => it(`should accept integer "${input}"`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equal("integer");
-            expect(token.value).equal(expected);
+            expect(token.type).equals("integer");
+            expect(token.value).equals(expected);
         }));
         it("should reject bad integers", function() {
             expect(tokenizeBad("1e6")).throws("(1,2): Invalid character in number literal: 'e'");
@@ -84,8 +84,8 @@ describe("Tokenizer", function() {
         ];
         cases.forEach(([input, expected]) => it(`should accept float "${input}"`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equal("float");
-            expect(token.value).equal(expected);
+            expect(token.type).equals("float");
+            expect(token.value).equals(expected);
         }));
     });
     describe("strings", function() {
@@ -101,36 +101,36 @@ describe("Tokenizer", function() {
             "",
         ].forEach(input => it(`should accept string ${JSON.stringify(input)}`, function() {
             const token = tokenizeOne(JSON.stringify(input));
-            expect(token.type).equal("string");
-            expect(token.value).equal(input);
+            expect(token.type).equals("string");
+            expect(token.value).equals(input);
         }));
         "0,1,12,123,1234,12345,F,FF,FFF,FFFF,FFFFF,10FFFF".split(",").forEach(hex => {
             const input = `"unicode=\\u+${hex};"`;
             it(`should accept string ${input}`, function() {
                 const token = tokenizeOne(input);
-                expect(token.type).equal("string");
-                expect(token.value).equal("unicode=" + String.fromCodePoint(Number.parseInt(hex, 16)));
+                expect(token.type).equals("string");
+                expect(token.value).equals("unicode=" + String.fromCodePoint(Number.parseInt(hex, 16)));
             });
         });
         it("should accept string with NUL", function() {
             const token = tokenizeOne(`"nul=\\0"`);
-            expect(token.type).equal("string");
-            expect(token.value).equal("nul=\0");
+            expect(token.type).equals("string");
+            expect(token.value).equals("nul=\0");
         });
         it("should accept string with VTAB", function() {
             const token = tokenizeOne(`"vtab=\\v"`);
-            expect(token.type).equal("string");
-            expect(token.value).equal("vtab=\u000B");
+            expect(token.type).equals("string");
+            expect(token.value).equals("vtab=\u000B");
         });
         it("should accept string with ESCAPE", function() {
             const token = tokenizeOne(`"escape=\\e"`);
-            expect(token.type).equal("string");
-            expect(token.value).equal("escape=\u001B");
+            expect(token.type).equals("string");
+            expect(token.value).equals("escape=\u001B");
         });
         it("should accept multi-line strings", function() {
             const token = tokenizeOne(`"alpha\\\nbeta\\\rgamma\\\r\\\ndelta"`);
-            expect(token.type).equal("string");
-            expect(token.value).equal("alphabetagammadelta");
+            expect(token.type).equals("string");
+            expect(token.value).equals("alphabetagammadelta");
         });
         it("should reject unknown escape sequences", function() {
             expect(tokenizeBad(`"\\z`)).throws("(1,3): Invalid string escape sequence");
@@ -165,8 +165,8 @@ describe("Tokenizer", function() {
     describe("punctuation", function() {
         [..."!#$%&'()*+,-./:;<=>?@[\\]^`{|}~"].forEach(input => it(`should accept operator "${input}"`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equal("punctuation");
-            expect(token.value).equal(input);
+            expect(token.type).equals("punctuation");
+            expect(token.value).equals(input);
         }));
     });
     describe("comments", function() {
@@ -177,8 +177,8 @@ describe("Tokenizer", function() {
             ["/* hello\r\nworld */", "/* hello\nworld */"],
         ].forEach(([input, expected]) => it(`should accept comment ${JSON.stringify(input)}`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equal("comment");
-            expect(token.value).equal(expected);
+            expect(token.type).equals("comment");
+            expect(token.value).equals(expected);
         }));
         it("should reject unterminated comments", function() {
             expect(tokenizeBad(`/* hello`)).throws("(1,1): Unterminated comment");
@@ -199,7 +199,7 @@ describe("Tokenizer", function() {
             "[[1,1],[1,4],[1,5],[1,8],[1,9],[1,10],[1,11],[1,14]]",
         ].forEach((expected, index) => it(`should accept '${inputs[index]}'`, function() {
             const actual = JSON.stringify([...tokenize(inputs[index])].map(token => [token.line, token.column]));
-            expect(actual).equal(expected);
+            expect(actual).equals(expected);
         }));
     });
     describe("values", function() {
@@ -210,7 +210,7 @@ describe("Tokenizer", function() {
             "var _ tab _ = _ _ ;",
         ].forEach((expected, index) => it(`should accept '${inputs[index]}'`, function() {
             const actual = [...tokenize(inputs[index])].map(token => String(token.value).replace(/[^!-~]+/g, "_")).join(" ");
-            expect(actual).equal(expected);
+            expect(actual).equals(expected);
         }));
     });
     describe("output", function() {
@@ -239,7 +239,7 @@ describe("Tokenizer", function() {
                         expect.fail(`Unexpected token type: ${JSON.stringify(token)}`);
                 }
             }
-            expect(actual.join(" ")).equal(expected);
+            expect(actual.join(" ")).equals(expected);
         }));
     });
 });

@@ -10,6 +10,7 @@ describe("Parser", function() {
             const parser = Parser.fromString("").withLogger(logger);
             expect(() => parser.parse()).throws("Empty input");
             expect(logger.errors).deep.equals(["Empty input"]);
+            expect(logger.logged.length).equals(1);
         });
         it("should accept comments", function() {
             const parser = Parser.fromString("/* comment */");
