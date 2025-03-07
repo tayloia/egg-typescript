@@ -1,6 +1,6 @@
 import { expect } from "chai";
 
-import { Exception, BaseException } from "../exception";
+import { Exception, BaseException, ExceptionParameters } from "../exception";
 
 describe("Exception", function() {
     it("should support format helper", function() {
@@ -36,10 +36,22 @@ describe("Exception", function() {
         expect(exception.name).equal("Overwritten");
     });
     it("should format location", function() {
-        const exception = new Exception("{location}error", {source:"source", line:1, column:2});
-        expect(exception.message).equal("source(1,2): error");
+        const exception = new Exception("{location}reason", {source:"source", line:1, column:2});
+        expect(exception.message).equal("source(1,2): reason");
         exception.parameters.column = 0;
-        expect(exception.message).equal("source(1): error");
+        expect(exception.message).equal("source(1): reason");
+        exception.parameters.line = 0;
+        expect(exception.message).equal("source: reason");
+        exception.parameters.column = 3;
+        expect(exception.message).equal("source(0,3): reason");
+        delete exception.parameters.source;
+        expect(exception.message).equal("(0,3): reason");
+        exception.parameters.line = 1;
+        expect(exception.message).equal("(1,3): reason");
+        exception.parameters.column = 0;
+        expect(exception.message).equal("(1): reason");
+        exception.parameters.line = 0;
+        expect(exception.message).equal("reason");
     });
     it("should throw Error type", function() {
         expect(() => {
@@ -48,7 +60,7 @@ describe("Exception", function() {
     });
     it("should support custom exceptions", function() {
         class CustomException extends BaseException {
-            constructor(message: string, parameters: Record<string, unknown> = {}) {
+            constructor(message: string, parameters?: ExceptionParameters) {
                 super(CustomException.name, message, parameters);
             }
         }

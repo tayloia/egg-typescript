@@ -1,4 +1,4 @@
-import { BaseException } from "./exception";
+import { BaseException, ExceptionParameters } from "./exception";
 
 function isLineSeparator(codepoint: number): boolean {
     switch (codepoint) {
@@ -346,7 +346,7 @@ export class Tokenizer {
 
 export namespace Tokenizer {
     export class Exception extends BaseException {
-        constructor(message: string, parameters: Record<string, unknown> = {}) {
+        constructor(message: string, parameters?: ExceptionParameters) {
             super("TokenizerException", message, parameters);
         }
     }

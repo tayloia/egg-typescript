@@ -1,8 +1,10 @@
+export type ExceptionParameters = Record<string, unknown>;
+
 export class BaseException extends Error {
-    parameters: Record<string, unknown>;
-    protected constructor(name: string, private _message: string, parameters: Record<string, unknown>) {
+    parameters: ExceptionParameters;
+    protected constructor(name: string, private _message: string, parameters?: ExceptionParameters) {
         super();
-        this.parameters = { ...parameters, name: name };
+        this.parameters = parameters ? { ...parameters, name: name } : { name: name };
     }
     get message(): string {
         return Exception.format(this._message, this.parameters);
@@ -13,7 +15,7 @@ export class BaseException extends Error {
 }
 
 export class Exception extends BaseException {
-    constructor(message: string, parameters: Record<string, unknown> = {}) {
+    constructor(message: string, parameters?: ExceptionParameters) {
         super(Exception.name, message, parameters);
     }
     static location(source: unknown, line: unknown, column: unknown): string {
@@ -28,7 +30,7 @@ export class Exception extends BaseException {
         }
         return "";
     }
-    static format(message: string, parameters: Record<string, unknown>): string {
+    static format(message: string, parameters: ExceptionParameters): string {
         function replacer(input: string, key: string): string {
             if (key === "location") {
                 return Exception.location(parameters.source, parameters.line, parameters.column);
