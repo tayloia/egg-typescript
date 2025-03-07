@@ -32,19 +32,19 @@ describe("Tokenizer", function() {
         it("should accept ASCII whitespace", function() {
             const input = " \t\f\v\n\r";
             const token = tokenizeOne(input);
-            expect(token.type).equals(Tokenizer.Type.Whitespace);
+            expect(token.kind).equals(Tokenizer.Kind.Whitespace);
             expect(token.value).equals("  \n\n\n\n");
         });
         it("should accept Unicode whitespace", function() {
             const input = "\u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u3000\u0085\u2028\u2029";
             const token = tokenizeOne(input);
-            expect(token.type).equals(Tokenizer.Type.Whitespace);
+            expect(token.kind).equals(Tokenizer.Kind.Whitespace);
             expect(token.value).equals("                \n\n\n");
         });
         it("should translate CRLF whitespace", function() {
             const input = "\n \r \r\n \n\r";
             const token = tokenizeOne(input);
-            expect(token.type).equals(Tokenizer.Type.Whitespace);
+            expect(token.kind).equals(Tokenizer.Kind.Whitespace);
             expect(token.value).equals("\n \n \n \n\n");
         });
     });
@@ -55,7 +55,7 @@ describe("Tokenizer", function() {
             "_",
         ].forEach(input => it(`should accept identifier "${input}"`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equals(Tokenizer.Type.Identifier);
+            expect(token.kind).equals(Tokenizer.Kind.Identifier);
             expect(token.value).equals(input);
         }));
     });
@@ -67,7 +67,7 @@ describe("Tokenizer", function() {
         ];
         cases.forEach(([input, expected]) => it(`should accept integer "${input}"`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equals(Tokenizer.Type.Integer);
+            expect(token.kind).equals(Tokenizer.Kind.Integer);
             expect(token.value).equals(expected);
         }));
         it("should reject bad integers", function() {
@@ -84,7 +84,7 @@ describe("Tokenizer", function() {
         ];
         cases.forEach(([input, expected]) => it(`should accept float "${input}"`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equals(Tokenizer.Type.Float);
+            expect(token.kind).equals(Tokenizer.Kind.Float);
             expect(token.value).equals(expected);
         }));
     });
@@ -101,35 +101,35 @@ describe("Tokenizer", function() {
             "",
         ].forEach(input => it(`should accept string ${JSON.stringify(input)}`, function() {
             const token = tokenizeOne(JSON.stringify(input));
-            expect(token.type).equals(Tokenizer.Type.String);
+            expect(token.kind).equals(Tokenizer.Kind.String);
             expect(token.value).equals(input);
         }));
         "0,1,12,123,1234,12345,F,FF,FFF,FFFF,FFFFF,10FFFF".split(",").forEach(hex => {
             const input = `"unicode=\\u+${hex};"`;
             it(`should accept string ${input}`, function() {
                 const token = tokenizeOne(input);
-                expect(token.type).equals(Tokenizer.Type.String);
+                expect(token.kind).equals(Tokenizer.Kind.String);
                 expect(token.value).equals("unicode=" + String.fromCodePoint(Number.parseInt(hex, 16)));
             });
         });
         it("should accept string with NUL", function() {
             const token = tokenizeOne(`"nul=\\0"`);
-            expect(token.type).equals(Tokenizer.Type.String);
+            expect(token.kind).equals(Tokenizer.Kind.String);
             expect(token.value).equals("nul=\0");
         });
         it("should accept string with VTAB", function() {
             const token = tokenizeOne(`"vtab=\\v"`);
-            expect(token.type).equals(Tokenizer.Type.String);
+            expect(token.kind).equals(Tokenizer.Kind.String);
             expect(token.value).equals("vtab=\u000B");
         });
         it("should accept string with ESCAPE", function() {
             const token = tokenizeOne(`"escape=\\e"`);
-            expect(token.type).equals(Tokenizer.Type.String);
+            expect(token.kind).equals(Tokenizer.Kind.String);
             expect(token.value).equals("escape=\u001B");
         });
         it("should accept multi-line strings", function() {
             const token = tokenizeOne(`"alpha\\\nbeta\\\rgamma\\\r\\\ndelta"`);
-            expect(token.type).equals(Tokenizer.Type.String);
+            expect(token.kind).equals(Tokenizer.Kind.String);
             expect(token.value).equals("alphabetagammadelta");
         });
         it("should reject unknown escape sequences", function() {
@@ -165,7 +165,7 @@ describe("Tokenizer", function() {
     describe("punctuation", function() {
         [..."!#$%&'()*+,-./:;<=>?@[\\]^`{|}~"].forEach(input => it(`should accept operator "${input}"`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equals(Tokenizer.Type.Punctuation);
+            expect(token.kind).equals(Tokenizer.Kind.Punctuation);
             expect(token.value).equals(input);
         }));
     });
@@ -177,7 +177,7 @@ describe("Tokenizer", function() {
             ["/* hello\r\nworld */", "/* hello\nworld */"],
         ].forEach(([input, expected]) => it(`should accept comment ${JSON.stringify(input)}`, function() {
             const token = tokenizeOne(input);
-            expect(token.type).equals(Tokenizer.Type.Comment);
+            expect(token.kind).equals(Tokenizer.Kind.Comment);
             expect(token.value).equals(expected);
         }));
         it("should reject unterminated comments", function() {
@@ -222,17 +222,17 @@ describe("Tokenizer", function() {
         ].forEach((expected, index) => it(`should accept '${inputs[index]}'`, function() {
             const actual: string[] = [];
             for (const token of tokenize(inputs[index])) {
-                switch (token.type) {
-                    case Tokenizer.Type.Whitespace:
-                    case Tokenizer.Type.Comment:
+                switch (token.kind) {
+                    case Tokenizer.Kind.Whitespace:
+                    case Tokenizer.Kind.Comment:
                         break;
-                    case Tokenizer.Type.Identifier:
-                    case Tokenizer.Type.Punctuation:
+                    case Tokenizer.Kind.Identifier:
+                    case Tokenizer.Kind.Punctuation:
                         actual.push(`${token.value}`);
                         break;
-                    case Tokenizer.Type.Integer:
-                    case Tokenizer.Type.Float:
-                    case Tokenizer.Type.String:
+                    case Tokenizer.Kind.Integer:
+                    case Tokenizer.Kind.Float:
+                    case Tokenizer.Kind.String:
                         actual.push(JSON.stringify(token.value));
                         break;
                     default:

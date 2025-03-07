@@ -80,7 +80,7 @@ export class Tokenizer {
     take(): Tokenizer.Token | undefined {
         const line = this.line;
         const column = this.column;
-        const success = (type: Tokenizer.Type, raw: string, value: number | string) => {
+        const success = (type: Tokenizer.Kind, raw: string, value: number | string) => {
             return new Tokenizer.Token(type, raw, value, line, column);
         }
         const fail = (message: string) => {
@@ -108,7 +108,7 @@ export class Tokenizer {
                 next = this.peek(++count);
             } while (isLineSeparator(next) || isSpaceSeparator(next));
             this.column += count;
-            return success(Tokenizer.Type.Whitespace, this.pop(count), value);
+            return success(Tokenizer.Kind.Whitespace, this.pop(count), value);
         }
         if (next === 0x002F) {
             // A slash
@@ -145,7 +145,7 @@ export class Tokenizer {
                     next = this.peek(++count);
                 } while (previous != 0x002A || next !== 0x002F);
                 this.column++;
-                return success(Tokenizer.Type.Comment, this.pop(count + 1), value + "/");
+                return success(Tokenizer.Kind.Comment, this.pop(count + 1), value + "/");
             }
             if (this.peek(1) === 0x002F) {
                 // Two slashes
@@ -172,7 +172,7 @@ export class Tokenizer {
                     count++;
                 }
                 this.column += count;
-                return success(Tokenizer.Type.Comment, this.pop(count), value);
+                return success(Tokenizer.Kind.Comment, this.pop(count), value);
             }
         }
         if (isIdentifierStart(next)) {
@@ -182,7 +182,7 @@ export class Tokenizer {
             } while (isIdentifierStart(next) || isDigit(next) || next === 0x005F);
             const identifier = this.pop(count);
             this.column += count;
-            return success(Tokenizer.Type.Identifier, identifier, identifier);
+            return success(Tokenizer.Kind.Identifier, identifier, identifier);
         }
         if (isDigit(next)) {
             let count = 0;
@@ -197,7 +197,7 @@ export class Tokenizer {
                 // No decimal point
                 const output = this.pop(count);
                 this.column += count;
-                return success(Tokenizer.Type.Integer, output, Number(output));
+                return success(Tokenizer.Kind.Integer, output, Number(output));
             }
             next = this.peek(++count);
             while (isDigit(next)) {
@@ -205,7 +205,7 @@ export class Tokenizer {
             }
             const output = this.pop(count);
             this.column += count;
-            return success(Tokenizer.Type.Float, output, Number(output));
+            return success(Tokenizer.Kind.Float, output, Number(output));
         }
         if (next === 0x0022) {
             // A double quote
@@ -333,11 +333,11 @@ export class Tokenizer {
                 }
             }
             this.column++;
-            return success(Tokenizer.Type.String, this.pop(count), value);
+            return success(Tokenizer.Kind.String, this.pop(count), value);
         }
         const output = this.pop(1);
         this.column++;
-        return success(Tokenizer.Type.Punctuation, output, output);
+        return success(Tokenizer.Kind.Punctuation, output, output);
     }
     static fromString(input: string): Tokenizer {
         return new Tokenizer(new InputString(input));
@@ -350,7 +350,7 @@ export namespace Tokenizer {
             super("TokenizerException", message, parameters);
         }
     }
-    export enum Type {
+    export enum Kind {
         Whitespace,
         Comment,
         Identifier,
@@ -361,7 +361,7 @@ export namespace Tokenizer {
     };
     export class Token {
         constructor(
-            public readonly type: Type,
+            public readonly kind: Kind,
             public readonly raw: string,
             public readonly value: string | number,
             public readonly line: number,

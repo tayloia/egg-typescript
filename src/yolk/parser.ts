@@ -3,23 +3,23 @@ import { ConsoleLogger, Logger } from "./logger";
 import { Tokenizer } from "./tokenizer";
 
 class Token {
-    constructor(public underlying?: Tokenizer.Token, public previous?: Tokenizer.Type) {}
-    get type() {
-        return this.underlying?.type;
+    constructor(public underlying?: Tokenizer.Token, public previous?: Tokenizer.Kind) {}
+    get kind() {
+        return this.underlying?.kind;
     }
     get value() {
         return this.underlying?.value;
     }
     describe(): string {
-        switch (this.underlying?.type) {
-            case Tokenizer.Type.Identifier:
-            case Tokenizer.Type.Punctuation:
+        switch (this.underlying?.kind) {
+            case Tokenizer.Kind.Identifier:
+            case Tokenizer.Kind.Punctuation:
                 return `'${this.underlying.value}'`;
-            case Tokenizer.Type.Integer:
+            case Tokenizer.Kind.Integer:
                 return `integer literal`;
-            case Tokenizer.Type.Float:
+            case Tokenizer.Kind.Float:
                 return `float literal`;
-            case Tokenizer.Type.String:
+            case Tokenizer.Kind.String:
                 return `string literal`;
             case null:
                 return `end-of-file`;
@@ -30,7 +30,7 @@ class Token {
 
 class Input {
     private taken: Token[] = [];
-    private previous?: Tokenizer.Type;
+    private previous?: Tokenizer.Kind;
     constructor(public tokenizer: Tokenizer) {}
     peek(lookahead: number = 0): Token {
         // Fill the taken array with enough tokens to satisfy the lookahead
@@ -40,10 +40,10 @@ class Input {
             if (incoming === undefined) {
                 return new Token(undefined, this.previous);
             }
-            if (incoming.type !== Tokenizer.Type.Whitespace && incoming.type !== Tokenizer.Type.Comment) {
+            if (incoming.kind !== Tokenizer.Kind.Whitespace && incoming.kind !== Tokenizer.Kind.Comment) {
                 this.taken.push(new Token(incoming, this.previous));
             }
-            this.previous = incoming.type;
+            this.previous = incoming.kind;
         }
         return this.taken[lookahead];
     }
@@ -130,7 +130,7 @@ class Impl extends Logger {
     }
     private parseIdentifier(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
-        if (token?.type === Tokenizer.Type.Identifier) {
+        if (token?.kind === Tokenizer.Kind.Identifier) {
             const node = Node.createIdentifier(token.value as string);
             return this.success(node, lookahead + 1);
         }
@@ -138,7 +138,7 @@ class Impl extends Logger {
     }
     private parseStringLiteral(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
-        if (token?.type === Tokenizer.Type.String) {
+        if (token?.kind === Tokenizer.Kind.String) {
             const node = Node.createIdentifier(token.value as string);
             return this.success(node, lookahead + 1);
         }
@@ -157,7 +157,7 @@ class Impl extends Logger {
     }
     private peekPunctuation(lookahead: number): string {
         const token = this.input.peek(lookahead);
-        return token?.type === Tokenizer.Type.Punctuation ? String(token.value) : "";
+        return token?.kind === Tokenizer.Kind.Punctuation ? String(token.value) : "";
     }
     private unexpected(message: string, lookahead: number, expected?: string): never {
         const token = this.input.peek(lookahead);
