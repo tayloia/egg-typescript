@@ -21,7 +21,7 @@ class Token {
                 return `float literal`;
             case Tokenizer.Kind.String:
                 return `string literal`;
-            case null:
+            case undefined:
                 return `end-of-file`;
         }
         return JSON.stringify(this.underlying);
@@ -56,14 +56,32 @@ class Input {
 
 enum Kind {
     Identifier = "identifier",
+    NullLiteral = "null-literal",
+    BooleanLiteral = "boolean-literal",
+    IntegerLiteral = "integer-literal",
     StringLiteral = "string-literal",
+    FunctionArguments = "function-arguments",
 }
 
 class Node implements Parser.Node {
-    children: Node[] = [];
-    constructor(public kind: Kind, public value: unknown) {}
+    private constructor(public kind: Kind, public children: Node[], public value?: boolean | number | string) {}
+    static createNullLiteral(): Node {
+        return new Node(Kind.NullLiteral, []);
+    }
+    static createBooleanLiteral(value: boolean): Node {
+        return new Node(Kind.NullLiteral, [], value);
+    }
+    static createIntegerLiteral(value: number): Node {
+        return new Node(Kind.IntegerLiteral, [], value);
+    }
+    static createStringLiteral(value: string): Node {
+        return new Node(Kind.StringLiteral, [], value);
+    }
     static createIdentifier(name: string): Node {
-        return new Node(Kind.Identifier, name);
+        return new Node(Kind.Identifier, [], name);
+    }
+    static createFunctionArguments(nodes: Node[]): Node {
+        return new Node(Kind.FunctionArguments, nodes);
     }
 }
 
@@ -124,9 +142,25 @@ class Impl extends Logger {
     }
     private parseFunctionArguments(lookahead: number): Success {
         console.assert(this.peekPunctuation(lookahead) === "(");
-        const argument = this.parseStringLiteral(lookahead + 1) ?? this.unexpected("Expected string literal", lookahead + 1); // TODO
-        this.expectPunctuation(argument.lookahead, ")");
-        return this.success(argument.node, argument.lookahead + 1);
+        lookahead++;
+        const nodes = [];
+        if (this.peekPunctuation(lookahead) !== ")") {
+            for (;;) {
+                const argument = this.expectFunctionArgument(lookahead);
+                nodes.push(argument.node);
+                lookahead = argument.lookahead;
+                const punctuation = this.peekPunctuation(lookahead);
+                if (punctuation === ",") {
+                    lookahead++;
+                } else if (punctuation === ")") {
+                    break;
+                } else {
+                    this.unexpected("Expected ',' or ')' after function argument", lookahead)
+                }
+            }
+        }
+        console.assert(this.peekPunctuation(lookahead) === ")");
+        return this.success(Node.createFunctionArguments(nodes), lookahead + 1);
     }
     private parseIdentifier(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
@@ -136,13 +170,44 @@ class Impl extends Logger {
         }
         return undefined;
     }
-    private parseStringLiteral(lookahead: number): Success | undefined {
-        const token = this.input.peek(lookahead);
-        if (token?.kind === Tokenizer.Kind.String) {
-            const node = Node.createIdentifier(token.value as string);
+    private parseNullLiteral(lookahead: number): Success | undefined {
+        if (this.peekKeyword(lookahead) === "null") {
+            const node = Node.createNullLiteral();
             return this.success(node, lookahead + 1);
         }
         return undefined;
+    }
+    private parseBooleanLiteral(lookahead: number): Success | undefined {
+        switch (this.peekKeyword(lookahead)) {
+            case "false":
+                return this.success(Node.createBooleanLiteral(false), lookahead + 1);
+            case "true":
+                return this.success(Node.createBooleanLiteral(true), lookahead + 1);
+            }
+        return undefined;
+    }
+    private parseIntegerLiteral(lookahead: number): Success | undefined {
+        const token = this.input.peek(lookahead);
+        if (token?.kind === Tokenizer.Kind.Integer) {
+            const node = Node.createIntegerLiteral(token.value as number);
+            return this.success(node, lookahead + 1);
+        }
+        return undefined;
+    }
+    private parseStringLiteral(lookahead: number): Success | undefined {
+        const token = this.input.peek(lookahead);
+        if (token?.kind === Tokenizer.Kind.String) {
+            const node = Node.createStringLiteral(token.value as string);
+            return this.success(node, lookahead + 1);
+        }
+        return undefined;
+    }
+    private expectFunctionArgument(lookahead: number): Success {
+        return this.parseNullLiteral(lookahead)
+            ?? this.parseBooleanLiteral(lookahead)
+            ?? this.parseIntegerLiteral(lookahead)
+            ?? this.parseStringLiteral(lookahead)
+            ?? this.unexpected("Expected function argument", lookahead); // TODO
     }
     private expectSemicolon(success: Success): Success {
         if (this.peekPunctuation(success.lookahead) === ";") {
@@ -155,13 +220,17 @@ class Impl extends Logger {
             this.unexpected("Expected '{expected}'", lookahead, expected);
         }
     }
+    private peekKeyword(lookahead: number): string {
+        const token = this.input.peek(lookahead);
+        return token?.kind === Tokenizer.Kind.Identifier ? String(token.value) : "";
+    }
     private peekPunctuation(lookahead: number): string {
         const token = this.input.peek(lookahead);
         return token?.kind === Tokenizer.Kind.Punctuation ? String(token.value) : "";
     }
     private unexpected(message: string, lookahead: number, expected?: string): never {
         const token = this.input.peek(lookahead);
-        this.throw(new Failure(message + ", but got {unexpected} instead", { expected: expected, unexpected: token.describe() }));
+        this.throw(this.failure(message + ", but got {unexpected} instead", { expected: expected, unexpected: token.describe() }));
     }
     private failure(message: string, parameters?: Logger.Parameters): Failure {
         return new Failure(message, parameters);
