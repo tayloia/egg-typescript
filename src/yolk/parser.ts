@@ -4,6 +4,28 @@ import { Tokenizer } from "./tokenizer";
 
 class Token {
     constructor(public underlying?: Tokenizer.Token, public previous?: Tokenizer.Type) {}
+    get type() {
+        return this.underlying?.type;
+    }
+    get value() {
+        return this.underlying?.value;
+    }
+    describe(): string {
+        switch (this.underlying?.type) {
+            case Tokenizer.Type.Identifier:
+            case Tokenizer.Type.Punctuation:
+                return `'${this.underlying.value}'`;
+            case Tokenizer.Type.Integer:
+                return `integer literal`;
+            case Tokenizer.Type.Float:
+                return `float literal`;
+            case Tokenizer.Type.String:
+                return `string literal`;
+            case null:
+                return `end-of-file`;
+        }
+        return JSON.stringify(this.underlying);
+    }
 }
 
 class Input {
@@ -32,10 +54,33 @@ class Input {
     }
 }
 
-class Node implements Parser.Node {
-    type: unknown;
-    children: Node[] = [];
+enum Kind {
+    Identifier = "identifier",
+    StringLiteral = "string-literal",
 }
+
+class Node implements Parser.Node {
+    children: Node[] = [];
+    constructor(public kind: Kind, public value: unknown) {}
+    static createIdentifier(name: string): Node {
+        return new Node(Kind.Identifier, name);
+    }
+}
+
+class Success {
+    readonly failed = false;
+    constructor(public node: Node, public lookahead: number) {}
+}
+
+class Failure {
+    readonly failed = true;
+    logs: Logger.Entry[];
+    constructor(message: string, parameters?: Logger.Parameters) {
+        this.logs = [new Logger.Entry(Logger.Severity.Error, message, parameters)];
+    }
+}
+
+// TODO type Result = Success | Failure;
 
 class Impl extends Logger {
     warnings = 0;
@@ -44,12 +89,15 @@ class Impl extends Logger {
         super();
     }
     parseModule(): Parser.Output {
-        if (this.input.peek().previous === undefined) {
+        let incoming = this.input.peek();
+        if (incoming.underlying === undefined && incoming.previous === undefined) {
             this.fatal("Empty input");
         }
         const children = [];
-        for (let node; (node = this.parseModuleStatement()); ) {
+        while (incoming.underlying !== undefined) {
+            const node = this.parseModuleStatement();
             children.push(node);
+            incoming = this.input.peek();
         }
         return {
             warnings: this.warnings,
@@ -57,8 +105,80 @@ class Impl extends Logger {
             root: { children }
         } as Parser.Output;
     }
-    private parseModuleStatement(): Node | undefined {
-        return;
+    private parseModuleStatement(): Node {
+        let success;
+        if ((success = this.parseFunctionCall(0))) {
+            success = this.expectSemicolon(success);
+            return this.commit(success);
+        };
+        this.unexpected("Expected module statement", 0);
+    }
+    private parseFunctionCall(lookahead: number): Success | undefined {
+        let success;
+        if ((success = this.parseIdentifier(lookahead))) {
+            if (this.peekPunctuation(success.lookahead) === "(") {
+                return this.parseFunctionArguments(success.lookahead);
+            }
+        }
+        return undefined;
+    }
+    private parseFunctionArguments(lookahead: number): Success {
+        console.assert(this.peekPunctuation(lookahead) === "(");
+        const argument = this.parseStringLiteral(lookahead + 1) ?? this.unexpected("Expected string literal", lookahead + 1); // TODO
+        this.expectPunctuation(argument.lookahead, ")");
+        return this.success(argument.node, argument.lookahead + 1);
+    }
+    private parseIdentifier(lookahead: number): Success | undefined {
+        const token = this.input.peek(lookahead);
+        if (token?.type === Tokenizer.Type.Identifier) {
+            const node = Node.createIdentifier(token.value as string);
+            return this.success(node, lookahead + 1);
+        }
+        return undefined;
+    }
+    private parseStringLiteral(lookahead: number): Success | undefined {
+        const token = this.input.peek(lookahead);
+        if (token?.type === Tokenizer.Type.String) {
+            const node = Node.createIdentifier(token.value as string);
+            return this.success(node, lookahead + 1);
+        }
+        return undefined;
+    }
+    private expectSemicolon(success: Success): Success {
+        if (this.peekPunctuation(success.lookahead) === ";") {
+            return new Success(success.node, success.lookahead + 1);
+        }
+        this.unexpected("Expected semicolon", success.lookahead, ";");
+    }
+    private expectPunctuation(lookahead: number, expected: string): void {
+        if (this.peekPunctuation(lookahead) !== expected) {
+            this.unexpected("Expected '{expected}'", lookahead, expected);
+        }
+    }
+    private peekPunctuation(lookahead: number): string {
+        const token = this.input.peek(lookahead);
+        return token?.type === Tokenizer.Type.Punctuation ? String(token.value) : "";
+    }
+    private unexpected(message: string, lookahead: number, expected?: string): never {
+        const token = this.input.peek(lookahead);
+        this.throw(new Failure(message + ", but got {unexpected} instead", { expected: expected, unexpected: token.describe() }));
+    }
+    private failure(message: string, parameters?: Logger.Parameters): Failure {
+        return new Failure(message, parameters);
+    }
+    private success(node: Node, lookahead: number): Success {
+        return new Success(node, lookahead);
+    }
+    commit(success: Success): Node {
+        console.assert(success.failed === false);
+        this.input.drop(success.lookahead)
+        return success.node;
+    } 
+    throw(failure: Failure): never {
+        console.assert(failure.failed === true);
+        console.assert(failure.logs.length > 0);
+        const entry = failure.logs[0];
+        throw new Parser.Exception(entry.message, entry.parameters);
     }
     log(entry: Logger.Entry): void {
         switch (entry.severity) {
