@@ -11,5 +11,5 @@ See http://egg.chilliant.com/
 * yarn add typescript ts-node
 * yarn add @types/node @types/chai @types/mocha chai mocha --save-dev
 * Install Mocha Test Explorer (https://marketplace.visualstudio.com/items?itemName=hbenl.vscode-mocha-test-adapter)
-* yarn add eslint --save-dev
+* yarn add eslint typescript-eslint --save-dev
 * Install ESLint extension (https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
