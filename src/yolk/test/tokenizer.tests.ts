@@ -6,7 +6,7 @@ describe("Tokenizer", function() {
     function* tokenize(input: string): Generator<Tokenizer.Token> {
         const tokenizer = Tokenizer.fromString(input);
         let raw = "";
-        for (let token; token = tokenizer.take(); raw += token.raw) {
+        for (let token; (token = tokenizer.take()); raw += token.raw) {
             yield token;
         }
         expect(raw).equal(input);
@@ -18,32 +18,6 @@ describe("Tokenizer", function() {
         expect(token?.raw).equal(input);
         expect(tokenizer.take()).undefined;
         return token!;
-    }
-    function tokenizeMany(input: string): string[] {
-        const output: string[] = [];
-        for (let token of tokenize(input)) {
-            switch (token.type) {
-                case "whitespace":
-                    break;
-                case "comment":
-                    output.push(`${token.value}`);
-                    break;
-                case "identifier":
-                    output.push(`${token.value}`);
-                    break;
-                case "integer":
-                case "float":
-                case "string":
-                    output.push(JSON.stringify(token.value));
-                    break;
-                case "punctuation":
-                    output.push(`'${token.value}'`);
-                    break;
-                default:
-                    expect.fail(`Unexpected token type: ${JSON.stringify(token)}`);
-            }
-        }
-        return output;
     }
     function tokenizeBad(input: string): () => unknown {
         return () => Tokenizer.fromString(input).take();
@@ -189,8 +163,7 @@ describe("Tokenizer", function() {
         });
     });
     describe("punctuation", function() {
-        let s = "!#$%&'()*+,-./:;<=>?@[\\]^`{|}~";
-        [...s].forEach(input => it(`should accept operator "${input}"`, function() {
+        [..."!#$%&'()*+,-./:;<=>?@[\\]^`{|}~"].forEach(input => it(`should accept operator "${input}"`, function() {
             const token = tokenizeOne(input);
             expect(token.type).equal("punctuation");
             expect(token.value).equal(input);
@@ -240,15 +213,15 @@ describe("Tokenizer", function() {
             expect(actual).equal(expected);
         }));
     });
-    describe("statements", function() {
+    describe("output", function() {
         [
             `print ( "hello world" , 3.14159 , true )`,
-            `print ( /*_pi_*/ )`,
-            `print ( helloworld )`,
-            `var _ tab _ = _ _ ;`,
+            `print ( )`,
+            `print ( "helloworld" )`,
+            `var tab = "\\t" ;`,
         ].forEach((expected, index) => it(`should accept '${inputs[index]}'`, function() {
             const actual: string[] = [];
-            for (let token of tokenize(inputs[index])) {
+            for (const token of tokenize(inputs[index])) {
                 switch (token.type) {
                     case "whitespace":
                     case "comment":

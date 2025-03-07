@@ -16,7 +16,7 @@ export class Exception extends BaseException {
     constructor(message: string, parameters: Record<string, unknown> = {}) {
         super(Exception.name, message, parameters);
     }
-    static location(source: any, line: any, column: any): string {
+    static location(source: unknown, line: unknown, column: unknown): string {
         if (column) {
             return `${source || ""}(${line},${column}): `;
         }
