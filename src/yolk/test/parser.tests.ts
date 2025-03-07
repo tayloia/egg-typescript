@@ -1,12 +1,15 @@
 import { expect } from "chai";
 
 import { Parser } from "../parser";
+import { TestLogger } from "../logger";
 
 describe("Parser", function() {
     describe("simple", function() {
         it("should reject empty input", function() {
-            const parser = Parser.fromString("");
+            const logger = new TestLogger();
+            const parser = Parser.fromString("").withLogger(logger);
             expect(() => parser.parse()).throws("Empty input");
+            expect(logger.errors).deep.equals(["Empty input"]);
         });
         it("should accept comments", function() {
             const parser = Parser.fromString("/* comment */");

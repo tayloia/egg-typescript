@@ -1,0 +1,104 @@
+export abstract class Logger {
+    abstract log(severity: Logger.Severity, message: string, parameters?: Logger.Parameters): void;
+    error(message: string, parameters?: Logger.Parameters) {
+        this.log(Logger.Severity.Error, message, parameters)
+    }
+    warning(message: string, parameters?: Logger.Parameters) {
+        this.log(Logger.Severity.Warning, message, parameters)
+    }
+    info(message: string, parameters?: Logger.Parameters) {
+        this.log(Logger.Severity.Info, message, parameters)
+    }
+    debug(message: string, parameters?: Logger.Parameters) {
+        this.log(Logger.Severity.Debug, message, parameters)
+    }
+    trace(message: string, parameters?: Logger.Parameters) {
+        this.log(Logger.Severity.Trace, message, parameters)
+    }
+    print(message: string, parameters?: Logger.Parameters) {
+        this.log(Logger.Severity.Print, message, parameters)
+    }
+    static location(source: unknown, line: unknown, column: unknown): string {
+        if (column) {
+            return `${source || ""}(${line},${column}): `;
+        }
+        if (line) {
+            return `${source || ""}(${line}): `;
+        }
+        if (source) {
+            return `${source}: `;
+        }
+        return "";
+    }
+    static format(message: string, parameters: Logger.Parameters): string {
+        function replacer(input: string, key: string): string {
+            if (key === "location") {
+                return Logger.location(parameters.source, parameters.line, parameters.column);
+            }
+            const output = parameters[key];
+            if (output === undefined) {
+                return input;
+            }
+            return String(output);
+        }
+        return message.replace(/\{([^}]+)\}/g, replacer);
+    }
+}
+
+export namespace Logger {
+    export enum Severity {
+        Error, Warning, Info, Debug, Trace, Print
+    }
+    export type Parameters = Record<string, unknown>;
+    export class Entry {
+        constructor(public severity: Logger.Severity, public message: string, public parameters?: Logger.Parameters) {}
+        format() {
+            return this.parameters ? Logger.format(this.message, this.parameters) : this.message;
+        }
+    }
+}
+
+export class ConsoleLogger extends Logger {
+    log(severity: Logger.Severity, message: string, parameters?: Logger.Parameters): void {
+        message = parameters ? Logger.format(message, parameters) : message;
+        switch (severity) {
+            case Logger.Severity.Error:
+                console.error(message);
+                break;
+            case Logger.Severity.Warning:
+                console.warn(message);
+                break;
+            case Logger.Severity.Info:
+                console.info(message);
+                break;
+            case Logger.Severity.Debug:
+                console.debug(message);
+                break;
+            case Logger.Severity.Trace:
+                console.trace(message);
+                break;
+            case Logger.Severity.Print:
+                console.log(message);
+                break;
+        }
+    }
+}
+
+export class TestLogger extends Logger {
+    logged: Logger.Entry[] = [];
+    log(severity: Logger.Severity, message: string, parameters?: Logger.Parameters): void {
+        this.logged.push(new Logger.Entry(severity, message, parameters));
+    }
+    filter(severity: Logger.Severity): string[] {
+        return this.logged.filter(log => log.severity === severity).map(log => log.format())
+    }
+    get errors() {
+        return this.filter(Logger.Severity.Error);
+    }
+    get warnings() {
+        return this.filter(Logger.Severity.Warning);
+    }
+    get prints() {
+        return this.filter(Logger.Severity.Print);
+    }
+}

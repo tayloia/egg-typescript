@@ -1,11 +1,12 @@
 import { BaseException, ExceptionParameters } from "./exception";
+import { ConsoleLogger, Logger } from "./logger";
 import { Tokenizer } from "./tokenizer";
 
 class Impl {
     warnings = 0;
     errors = 0;
-    constructor(public tokenizer: Tokenizer) {}
-    parse(): Parser.Output {
+    constructor(public tokenizer: Tokenizer, public logger: Logger) {}
+    parseModule(): Parser.Output {
         if (!this.tokenizer.take()) {
             this.fatal("Empty input");
         }
@@ -14,17 +15,26 @@ class Impl {
             errors: this.errors
         } as Parser.Output;
     }
-    fatal(message: string): never {
+    log(severity: Logger.Severity, message: string, parameters?: Logger.Parameters): void {
+        this.logger.log(severity, message, parameters);
+    }
+    fatal(message: string, parameters?: Logger.Parameters): never {
+        this.logger.log(Logger.Severity.Error, message, parameters);
         throw new Parser.Exception(message);
     }
 }
 
 export class Parser {
+    private logger?: Logger;
     private constructor(private tokenizer: Tokenizer) {
     }
     parse(): Parser.Output {
-        const impl = new Impl(this.tokenizer);
-        return impl.parse();
+        const impl = new Impl(this.tokenizer, this.logger ?? new ConsoleLogger());
+        return impl.parseModule();
+    }
+    withLogger(logger: Logger): Parser {
+        this.logger = logger;
+        return this;
     }
     static fromString(input: string): Parser {
         return new Parser(Tokenizer.fromString(input));
