@@ -3,15 +3,21 @@ import { ConsoleLogger, Logger } from "./logger";
 import { Tokenizer } from "./tokenizer";
 
 class Token {
-    constructor(public underlying?: Tokenizer.Token, public previous?: Tokenizer.Kind) {}
+    constructor(public underlying: Tokenizer.Token, public previous: Tokenizer.Kind) {}
+    get line() {
+        return this.underlying.line;
+    }
+    get column() {
+        return this.underlying.column;
+    }
     get kind() {
-        return this.underlying?.kind;
+        return this.underlying.kind;
     }
     get value() {
-        return this.underlying?.value;
+        return this.underlying.value;
     }
     describe(): string {
-        switch (this.underlying?.kind) {
+        switch (this.underlying.kind) {
             case Tokenizer.Kind.Identifier:
             case Tokenizer.Kind.Punctuation:
                 return `'${this.underlying.value}'`;
@@ -21,7 +27,7 @@ class Token {
                 return `float literal`;
             case Tokenizer.Kind.String:
                 return `string literal`;
-            case undefined:
+            case Tokenizer.Kind.EOF:
                 return `end-of-file`;
         }
         return JSON.stringify(this.underlying);
@@ -30,17 +36,16 @@ class Token {
 
 class Input {
     private taken: Token[] = [];
-    private previous?: Tokenizer.Kind;
-    constructor(public tokenizer: Tokenizer) {}
+    private previous = Tokenizer.Kind.EOF;
+    constructor(public source: string, public tokenizer: Tokenizer) {}
     peek(lookahead: number = 0): Token {
         // Fill the taken array with enough tokens to satisfy the lookahead
         console.assert(lookahead >= 0);
         while (lookahead >= this.taken.length) {
             const incoming = this.tokenizer.take();
-            if (incoming === undefined) {
-                return new Token(undefined, this.previous);
-            }
-            if (incoming.kind !== Tokenizer.Kind.Whitespace && incoming.kind !== Tokenizer.Kind.Comment) {
+            if (incoming.kind === Tokenizer.Kind.EOF) {
+                return new Token(incoming, this.previous);
+            } else if (incoming.kind !== Tokenizer.Kind.Whitespace && incoming.kind !== Tokenizer.Kind.Comment) {
                 this.taken.push(new Token(incoming, this.previous));
             }
             this.previous = incoming.kind;
@@ -108,12 +113,12 @@ class Impl extends Logger {
     }
     parseModule(): Parser.Output {
         let incoming = this.input.peek();
-        if (incoming.underlying === undefined && incoming.previous === undefined) {
-            this.fatal("Empty input");
+        if (incoming.underlying.kind === Tokenizer.Kind.EOF && incoming.previous === Tokenizer.Kind.EOF) {
+            this.fatal("Empty input", { source: this.input.source });
         }
         const children = [];
-        while (incoming.underlying !== undefined) {
-            const node = this.parseModuleStatement();
+        while (incoming.underlying.kind !== Tokenizer.Kind.EOF) {
+            const node = this.expectModuleStatement();
             children.push(node);
             incoming = this.input.peek();
         }
@@ -123,24 +128,24 @@ class Impl extends Logger {
             root: { children }
         } as Parser.Output;
     }
-    private parseModuleStatement(): Node {
+    private expectModuleStatement(): Node {
         let success;
         if ((success = this.parseFunctionCall(0))) {
             success = this.expectSemicolon(success);
             return this.commit(success);
         };
-        this.unexpected("Expected module statement", 0);
+        this.throwUnexpected("Expected module statement", 0);
     }
     private parseFunctionCall(lookahead: number): Success | undefined {
         let success;
         if ((success = this.parseIdentifier(lookahead))) {
             if (this.peekPunctuation(success.lookahead) === "(") {
-                return this.parseFunctionArguments(success.lookahead);
+                return this.expectFunctionArguments(success.lookahead);
             }
         }
         return undefined;
     }
-    private parseFunctionArguments(lookahead: number): Success {
+    private expectFunctionArguments(lookahead: number): Success {
         console.assert(this.peekPunctuation(lookahead) === "(");
         lookahead++;
         const nodes = [];
@@ -155,7 +160,7 @@ class Impl extends Logger {
                 } else if (punctuation === ")") {
                     break;
                 } else {
-                    this.unexpected("Expected ',' or ')' after function argument", lookahead)
+                    this.throwUnexpected("Expected ',' or ')' after function argument", lookahead);
                 }
             }
         }
@@ -164,7 +169,7 @@ class Impl extends Logger {
     }
     private parseIdentifier(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
-        if (token?.kind === Tokenizer.Kind.Identifier) {
+        if (token.kind === Tokenizer.Kind.Identifier) {
             const node = Node.createIdentifier(token.value as string);
             return this.success(node, lookahead + 1);
         }
@@ -188,7 +193,7 @@ class Impl extends Logger {
     }
     private parseIntegerLiteral(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
-        if (token?.kind === Tokenizer.Kind.Integer) {
+        if (token.kind === Tokenizer.Kind.Integer) {
             const node = Node.createIntegerLiteral(token.value as number);
             return this.success(node, lookahead + 1);
         }
@@ -196,7 +201,7 @@ class Impl extends Logger {
     }
     private parseStringLiteral(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
-        if (token?.kind === Tokenizer.Kind.String) {
+        if (token.kind === Tokenizer.Kind.String) {
             const node = Node.createStringLiteral(token.value as string);
             return this.success(node, lookahead + 1);
         }
@@ -207,33 +212,41 @@ class Impl extends Logger {
             ?? this.parseBooleanLiteral(lookahead)
             ?? this.parseIntegerLiteral(lookahead)
             ?? this.parseStringLiteral(lookahead)
-            ?? this.unexpected("Expected function argument", lookahead); // TODO
+            ?? this.throwUnexpected("Expected function argument", lookahead); // TODO
     }
     private expectSemicolon(success: Success): Success {
         if (this.peekPunctuation(success.lookahead) === ";") {
             return new Success(success.node, success.lookahead + 1);
         }
-        this.unexpected("Expected semicolon", success.lookahead, ";");
+        this.throwUnexpected("Expected semicolon", success.lookahead, ";");
     }
     private expectPunctuation(lookahead: number, expected: string): void {
         if (this.peekPunctuation(lookahead) !== expected) {
-            this.unexpected("Expected '{expected}'", lookahead, expected);
+            this.throwUnexpected("Expected '{expected}'", lookahead, expected);
         }
     }
     private peekKeyword(lookahead: number): string {
         const token = this.input.peek(lookahead);
-        return token?.kind === Tokenizer.Kind.Identifier ? String(token.value) : "";
+        return token.kind === Tokenizer.Kind.Identifier ? String(token.value) : "";
     }
     private peekPunctuation(lookahead: number): string {
         const token = this.input.peek(lookahead);
-        return token?.kind === Tokenizer.Kind.Punctuation ? String(token.value) : "";
+        return token.kind === Tokenizer.Kind.Punctuation ? String(token.value) : "";
     }
-    private unexpected(message: string, lookahead: number, expected?: string): never {
+    private throwUnexpected(message: string, lookahead: number, expected?: string): never {
+        this.throw(this.unexpected(message, lookahead, expected));
+    }
+    private unexpected(message: string, lookahead: number, expected?: string): Failure {
         const token = this.input.peek(lookahead);
-        this.throw(this.failure(message + ", but got {unexpected} instead", { expected: expected, unexpected: token.describe() }));
+        return this.failure(message + ", but got {unexpected} instead", {
+            line: token.line,
+            column: token.column,
+            expected: expected,
+            unexpected: token.describe(),
+        });
     }
-    private failure(message: string, parameters?: Logger.Parameters): Failure {
-        return new Failure(message, parameters);
+    private failure(message: string, parameters: Logger.Parameters): Failure {
+        return new Failure("{location}" + message, parameters);
     }
     private success(node: Node, lookahead: number): Success {
         return new Success(node, lookahead);
@@ -246,8 +259,14 @@ class Impl extends Logger {
     throw(failure: Failure): never {
         console.assert(failure.failed === true);
         console.assert(failure.logs.length > 0);
-        const entry = failure.logs[0];
-        throw new Parser.Exception(entry.message, entry.parameters);
+        let severist = failure.logs[0];
+        for (const log of failure.logs) {
+            this.logger.log(log);
+            if (log.severity > severist.severity) {
+                severist = log;
+            }
+        }
+        throw new Parser.Exception(severist.message, severist.parameters);
     }
     log(entry: Logger.Entry): void {
         switch (entry.severity) {
@@ -260,18 +279,17 @@ class Impl extends Logger {
         }
         this.logger.log(entry);
     }
-    fatal(message: string, parameters?: Logger.Parameters): never {
-        this.error(message, parameters);
-        throw new Parser.Exception(message, parameters);
+    fatal(message: string, parameters: Logger.Parameters): never {
+        this.throw(this.failure(message, parameters));
     }
 }
 
 export class Parser {
     private logger?: Logger;
-    private constructor(private tokenizer: Tokenizer) {
+    private constructor(private source: string, private tokenizer: Tokenizer) {
     }
     parse(): Parser.Output {
-        const input = new Input(this.tokenizer);
+        const input = new Input(this.source, this.tokenizer);
         const impl = new Impl(input, this.logger ?? new ConsoleLogger());
         return impl.parseModule();
     }
@@ -279,8 +297,8 @@ export class Parser {
         this.logger = logger;
         return this;
     }
-    static fromString(input: string): Parser {
-        return new Parser(Tokenizer.fromString(input));
+    static fromString(input: string, source?: string): Parser {
+        return new Parser(source ?? "", Tokenizer.fromString(input));
     }
 }
 

@@ -6,7 +6,8 @@ describe("Tokenizer", function() {
     function* tokenize(input: string): Generator<Tokenizer.Token> {
         const tokenizer = Tokenizer.fromString(input);
         let raw = "";
-        for (let token; (token = tokenizer.take()); raw += token.raw) {
+        for (let token = tokenizer.take(); token.kind != Tokenizer.Kind.EOF; token = tokenizer.take()) {
+            raw += token.raw;
             yield token;
         }
         expect(raw).equals(input);
@@ -14,9 +15,8 @@ describe("Tokenizer", function() {
     function tokenizeOne(input: string): Tokenizer.Token {
         const tokenizer = Tokenizer.fromString(input);
         const token = tokenizer.take();
-        expect(token).not.undefined;
         expect(token?.raw).equals(input);
-        expect(tokenizer.take()).undefined;
+        expect(tokenizer.take().kind).equals(Tokenizer.Kind.EOF);
         return token!;
     }
     function tokenizeBad(input: string): () => unknown {
@@ -26,8 +26,8 @@ describe("Tokenizer", function() {
         it("should accept empty input", function() {
             const tokenizer = Tokenizer.fromString("");
             const token = tokenizer.take();
-            expect(token).undefined;
-            expect(tokenizer.take()).undefined;
+            expect(token.kind).equals(Tokenizer.Kind.EOF);
+            expect(token.kind).equals(Tokenizer.Kind.EOF);
         });
         it("should accept ASCII whitespace", function() {
             const input = " \t\f\v\n\r";

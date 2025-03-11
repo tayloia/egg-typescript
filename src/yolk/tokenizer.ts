@@ -77,18 +77,18 @@ export class Tokenizer {
         this.taken = this.taken.slice(count);
         return output;
     }
-    take(): Tokenizer.Token | undefined {
+    take(): Tokenizer.Token {
         const line = this.line;
         const column = this.column;
-        const success = (type: Tokenizer.Kind, raw: string, value: number | string) => {
-            return new Tokenizer.Token(type, raw, value, line, column);
+        const success = (kind: Tokenizer.Kind, raw: string, value: number | string) => {
+            return new Tokenizer.Token(kind, raw, value, line, column);
         }
         const fail = (message: string) => {
             throw new Tokenizer.Exception("{location}" + message, { line: this.line, column: this.column });
         }
         let next = this.peek();
         if (next < 0) {
-            return undefined;
+            return new Tokenizer.Token(Tokenizer.Kind.EOF, "", -1, line, column);
         }
         if (isLineSeparator(next) || isSpaceSeparator(next)) {
             let previous = -1;
@@ -357,7 +357,8 @@ export namespace Tokenizer {
         Integer,
         Float,
         String,
-        Punctuation
+        Punctuation,
+        EOF
     };
     export class Token {
         constructor(

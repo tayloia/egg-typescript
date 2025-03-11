@@ -7,9 +7,9 @@ describe("Parser", function() {
     describe("simple", function() {
         it("should reject empty input", function() {
             const logger = new TestLogger();
-            const parser = Parser.fromString("").withLogger(logger);
-            expect(() => parser.parse()).throws("Empty input");
-            expect(logger.errors).deep.equals(["Empty input"]);
+            const parser = Parser.fromString("", "source").withLogger(logger);
+            expect(() => parser.parse()).throws("source: Empty input");
+            expect(logger.errors).deep.equals(["source: Empty input"]);
             expect(logger.logged.length).equals(1);
         });
         it("should accept comments", function() {
@@ -26,19 +26,23 @@ describe("Parser", function() {
     describe("statement function call", function() {
         it("should reject unterminated function arguments", function() {
             const parser = Parser.fromString("print(");
-            expect(() => parser.parse()).throws("Expected function argument, but got end-of-file instead");
+            expect(() => parser.parse()).throws("(1,7): Expected function argument, but got end-of-file instead");
         });
         it("should reject missing semicolon", function() {
             const parser = Parser.fromString("print()");
-            expect(() => parser.parse()).throws("Expected semicolon, but got end-of-file instead");
+            expect(() => parser.parse()).throws("(1,8): Expected semicolon, but got end-of-file instead");
         });
         it("should reject leading comma", function() {
             const parser = Parser.fromString("print(,)");
-            expect(() => parser.parse()).throws("Expected function argument, but got ',' instead");
+            expect(() => parser.parse()).throws("(1,7): Expected function argument, but got ',' instead");
+        });
+        it("should reject empty argument", function() {
+            const parser = Parser.fromString("print(123,,456)");
+            expect(() => parser.parse()).throws("(1,11): Expected function argument, but got ',' instead");
         });
         it("should reject trailing comma", function() {
             const parser = Parser.fromString("print(123,)");
-            expect(() => parser.parse()).throws("Expected function argument, but got ')' instead");
+            expect(() => parser.parse()).throws("(1,11): Expected function argument, but got ')' instead");
         });
         it("should accept zero arguments", function() {
             const parser = Parser.fromString("print();");
