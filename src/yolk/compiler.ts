@@ -1,13 +1,14 @@
 import { BaseException, ExceptionParameters } from "./exception";
 import { Logger } from "./logger";
 import { Parser } from "./parser";
+import { Module } from "./program";
 
 class Impl extends Logger {
     constructor(public input: Parser.Node, public logger: Logger) {
         super();
     }
-    compileModule(): Compiler.Node {
-        return {} as Compiler.Node;
+    compileModule(): Module {
+        return {} as Module;
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
@@ -18,7 +19,7 @@ export class Compiler {
     parsed?: Parser.Node;
     constructor(public parser: Parser) {
     }
-    compile(): Compiler.Node {
+    compile(): Module {
         this.parsed ??= this.parser.parse();
         const impl = new Impl(this.parsed, this.logger);
         return impl.compileModule();

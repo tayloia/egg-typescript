@@ -273,11 +273,10 @@ class Impl extends Logger {
 
 export class Parser {
     private _logger?: Logger;
-    constructor(public source: string, private tokenizer: Tokenizer) {
+    constructor(private input: Input) {
     }
     parse(): Parser.Node {
-        const input = new Input(this.source, this.tokenizer);
-        const impl = new Impl(input, this.logger);
+        const impl = new Impl(this.input, this.logger);
         return impl.parseModule();
     }
     withLogger(logger: Logger): Parser {
@@ -288,7 +287,7 @@ export class Parser {
         return this._logger ??= new ConsoleLogger();
     }
     static fromString(input: string, source?: string): Parser {
-        return new Parser(source ?? "", Tokenizer.fromString(input));
+        return new Parser(new Input(source ?? "", Tokenizer.fromString(input)));
     }
 }
 

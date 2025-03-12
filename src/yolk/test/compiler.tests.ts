@@ -1,25 +1,23 @@
 import { expect } from "chai";
 
-import { Compiler } from "../compiler";
-import { TestLogger } from "../logger";
+import { TestProgram } from "../program";
 
 describe("Compiler", function() {
     describe("simple", function() {
         it("should reject empty input", function() {
-            const logger = new TestLogger();
-            const compiler = Compiler.fromString("", "source").withLogger(logger);
-            expect(() => compiler.compile()).throws("source: Empty input");
-            expect(logger.errors).deep.equals(["source: Empty input"]);
-            expect(logger.logged.length).equals(1);
+            const test = new TestProgram("");
+            expect(() => test.compile()).throws("<SOURCE>: Empty input");
+            expect(test.errors).deep.equals(["<SOURCE>: Empty input"]);
+            expect(test.logged.length).equals(1);
         });
         it("should accept minimal program", function() {
-            const compiler = Compiler.fromString("print(\"hello world\");", "source");
-            const output = compiler.compile();
+            const test = new TestProgram("print(\"hello world\");");
+            const output = test.compile();
             expect(output).not.undefined;
         });
         it("should reject malformed program", function() {
-            const compiler = Compiler.fromString("print(", "source");
-            expect(() => compiler.compile()).throws("source(1,7): Expected function argument, but got end-of-file instead");
+            const test = new TestProgram("print(");
+            expect(() => test.compile()).throws("<SOURCE>(1,7): Expected function argument, but got end-of-file instead");
         });
     });
 });
