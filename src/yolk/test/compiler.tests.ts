@@ -25,9 +25,10 @@ describe("Compiler", function() {
     describe("fromScript", function() {
         [
             "scripts/hello-world.egg",
+            ...Test.findPath(this, "scripts/test-*.egg")
         ].forEach(script => it(`should accept '${script}'`, function() {
             const module = TestProgram.fromScript(this, script).compile();
-            expect(module.source).equals(Test.path(this, script));
+            expect(module.source).equals(Test.makePath(this, script));
         }));
     });
 });

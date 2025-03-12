@@ -7,8 +7,16 @@ import { Parser } from "../parser";
 import { Module, Program } from "../program";
 
 export namespace Test {
-    export function path(mocha: Mocha.Context, script: string, depth: number = 3): string {
-        return mocha.test!.file!.split(/[/\\]/).slice(-1 - depth, -1).join("/") + "/" + script;
+    function basePath(mocha: Mocha.Context | Mocha.Suite, depth: number): string {
+        const path = ("test" in mocha) ? mocha.test!.file! : mocha.file!;
+        return path.split(/[/\\]/).slice(-1 - depth, -1).join("/");
+    }
+    export function makePath(mocha: Mocha.Context | Mocha.Suite, name: string, depth: number = 3): string {
+        return basePath(mocha, depth) + "/" + name;
+    }
+    export function findPath(mocha: Mocha.Context | Mocha.Suite, wildcard: string, depth: number = 3): string[] {
+        const cwd = basePath(mocha, depth);
+        return fs.globSync(wildcard, {cwd}).map(x => x.replace(/\\/g, "/"));
     }
 }
 
@@ -51,7 +59,7 @@ export class TestProgram extends TestLogger {
         return new TestProgram(fs.readFileSync(path, "utf8"), path.toString());
     }
     static fromScript(mocha: Mocha.Context, script: string, depth: number = 3): TestProgram {
-        const path = Test.path(mocha, script, depth);
+        const path = Test.makePath(mocha, script, depth);
         return new TestProgram(fs.readFileSync(path, "utf8"), path);
     }
     static fromString(text: string, source: string = "<SOURCE>"): TestProgram {

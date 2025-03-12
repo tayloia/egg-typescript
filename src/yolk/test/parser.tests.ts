@@ -1,6 +1,6 @@
 import { expect } from "chai";
 
-import { TestProgram } from "../test/testing";
+import { Test, TestProgram } from "../test/testing";
 
 describe("Parser", function() {
     describe("fromString", function() {
@@ -24,6 +24,7 @@ describe("Parser", function() {
     describe("fromScript", function() {
         [
             "scripts/hello-world.egg",
+            ...Test.findPath(this, "scripts/test-*.egg")
         ].forEach(script => it(`should accept '${script}'`, function() {
             const output = TestProgram.fromScript(this, script).parse();
             expect(output.children.length).equals(1);

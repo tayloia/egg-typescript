@@ -18,10 +18,11 @@ describe("Linker", function() {
     describe("fromScript", function() {
         [
             "scripts/hello-world.egg",
+            ...Test.findPath(this, "scripts/test-*.egg")
         ].forEach(script => it(`should accept '${script}'`, function() {
             const program = TestProgram.fromScript(this, script).link();
             expect(program.modules.length).equals(1);
-            expect(program.modules[0].source).equals(Test.path(this, script));
+            expect(program.modules[0].source).equals(Test.makePath(this, script));
         }));
     });
 });
