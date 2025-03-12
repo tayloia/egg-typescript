@@ -49,6 +49,7 @@ function isIdentifierStart(codepoint: number): boolean {
 
 class InputString implements Tokenizer.Input {
     constructor(private input: string, private offset: number = 0) {}
+    source?: string;
     take(): number {
         const output = this.input.codePointAt(this.offset);
         if (this.input.charCodeAt(this.offset++) !== output) {
@@ -370,6 +371,7 @@ export namespace Tokenizer {
         ) {}
     }
     export interface Input {
+        readonly source?: string;
         take(): number;
     }
 }

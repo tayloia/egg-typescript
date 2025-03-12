@@ -106,12 +106,10 @@ class Failure {
 // TODO type Result = Success | Failure;
 
 class Impl extends Logger {
-    warnings = 0;
-    errors = 0;
     constructor(public input: Input, public logger: Logger) {
         super();
     }
-    parseModule(): Parser.Output {
+    parseModule(): Parser.Node {
         let incoming = this.input.peek();
         if (incoming.underlying.kind === Tokenizer.Kind.EOF && incoming.previous === Tokenizer.Kind.EOF) {
             this.fatal("Empty input", { source: this.input.source });
@@ -122,11 +120,7 @@ class Impl extends Logger {
             children.push(node);
             incoming = this.input.peek();
         }
-        return {
-            warnings: this.warnings,
-            errors: this.errors,
-            root: { children }
-        } as Parser.Output;
+        return { children } as Parser.Node;
     }
     private expectModuleStatement(): Node {
         let success;
@@ -269,14 +263,6 @@ class Impl extends Logger {
         throw new Parser.Exception(severist.message, severist.parameters);
     }
     log(entry: Logger.Entry): void {
-        switch (entry.severity) {
-            case Logger.Severity.Error:
-                this.errors++;
-                break;
-            case Logger.Severity.Warning:
-                this.warnings++;
-                break;
-        }
         this.logger.log(entry);
     }
     fatal(message: string, parameters: Logger.Parameters): never {
@@ -285,17 +271,20 @@ class Impl extends Logger {
 }
 
 export class Parser {
-    private logger?: Logger;
-    private constructor(private source: string, private tokenizer: Tokenizer) {
+    protected _logger?: Logger;
+    protected constructor(private source: string, private tokenizer: Tokenizer) {
     }
-    parse(): Parser.Output {
+    parse(): Parser.Node {
         const input = new Input(this.source, this.tokenizer);
-        const impl = new Impl(input, this.logger ?? new ConsoleLogger());
+        const impl = new Impl(input, this.logger);
         return impl.parseModule();
     }
     withLogger(logger: Logger): Parser {
-        this.logger = logger;
+        this._logger = logger;
         return this;
+    }
+    get logger() {
+        return this._logger ??= new ConsoleLogger();
     }
     static fromString(input: string, source?: string): Parser {
         return new Parser(source ?? "", Tokenizer.fromString(input));
@@ -310,10 +299,5 @@ export namespace Parser {
     }
     export interface Node {
         children: Node[];
-    }
-    export interface Output {
-        warnings: number;
-        errors: number;
-        root: Node;
     }
 }

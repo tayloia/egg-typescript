@@ -15,12 +15,12 @@ describe("Parser", function() {
         it("should accept comments", function() {
             const parser = Parser.fromString("/* comment */");
             const output = parser.parse();
-            expect(output).includes({errors:0, warnings:0});
+            expect(output.children.length).equals(0);
         });
         it("should accept minimal program", function() {
             const parser = Parser.fromString("print(\"hello world\");");
             const output = parser.parse();
-            expect(output).includes({errors:0, warnings:0});
+            expect(output.children.length).equals(1);
         });
     });
     describe("statement function call", function() {
@@ -47,22 +47,22 @@ describe("Parser", function() {
         it("should accept zero arguments", function() {
             const parser = Parser.fromString("print();");
             const output = parser.parse();
-            expect(output).includes({errors:0, warnings:0});
+            expect(output.children.length).equals(1);
         });
         it("should accept one argument", function() {
             const parser = Parser.fromString("print(null);");
             const output = parser.parse();
-            expect(output).includes({errors:0, warnings:0});
+            expect(output.children.length).equals(1);
         });
         it("should accept two arguments", function() {
             const parser = Parser.fromString("print(null,false);");
             const output = parser.parse();
-            expect(output).includes({errors:0, warnings:0});
+            expect(output.children.length).equals(1);
         });
         it("should accept three arguments", function() {
             const parser = Parser.fromString("print(null,false,true);");
             const output = parser.parse();
-            expect(output).includes({errors:0, warnings:0});
+            expect(output.children.length).equals(1);
         });
     });
 });
