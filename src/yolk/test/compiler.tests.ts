@@ -13,9 +13,13 @@ describe("Compiler", function() {
             expect(logger.logged.length).equals(1);
         });
         it("should accept minimal program", function() {
-            const compiler = Compiler.fromString("print(\"hello world\");");
+            const compiler = Compiler.fromString("print(\"hello world\");", "source");
             const output = compiler.compile();
             expect(output).not.undefined;
+        });
+        it("should reject malformed program", function() {
+            const compiler = Compiler.fromString("print(", "source");
+            expect(() => compiler.compile()).throws("source(1,7): Expected function argument, but got end-of-file instead");
         });
     });
 });

@@ -233,6 +233,7 @@ class Impl extends Logger {
     private unexpected(message: string, lookahead: number, expected?: string): Failure {
         const token = this.input.peek(lookahead);
         return this.failure(message + ", but got {unexpected} instead", {
+            source: this.input.source,
             line: token.line,
             column: token.column,
             expected: expected,
@@ -271,8 +272,8 @@ class Impl extends Logger {
 }
 
 export class Parser {
-    protected _logger?: Logger;
-    protected constructor(private source: string, private tokenizer: Tokenizer) {
+    private _logger?: Logger;
+    constructor(public source: string, private tokenizer: Tokenizer) {
     }
     parse(): Parser.Node {
         const input = new Input(this.source, this.tokenizer);

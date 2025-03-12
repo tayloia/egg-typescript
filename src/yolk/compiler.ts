@@ -3,8 +3,6 @@ import { Logger } from "./logger";
 import { Parser } from "./parser";
 
 class Impl extends Logger {
-    warnings = 0;
-    errors = 0;
     constructor(public input: Parser.Node, public logger: Logger) {
         super();
     }
@@ -12,14 +10,6 @@ class Impl extends Logger {
         return {} as Compiler.Node;
     }
     log(entry: Logger.Entry): void {
-        switch (entry.severity) {
-            case Logger.Severity.Error:
-                this.errors++;
-                break;
-            case Logger.Severity.Warning:
-                this.warnings++;
-                break;
-        }
         this.logger.log(entry);
     }
 }
@@ -29,7 +19,7 @@ export class Compiler {
     constructor(public parser: Parser) {
     }
     compile(): Compiler.Node {
-        this.parsed = this.parser.parse();
+        this.parsed ??= this.parser.parse();
         const impl = new Impl(this.parsed, this.logger);
         return impl.compileModule();
     }
@@ -53,10 +43,5 @@ export namespace Compiler {
     }
     export interface Node {
         children: Node[];
-    }
-    export interface Output {
-        warnings: number;
-        errors: number;
-        root: Node;
     }
 }
