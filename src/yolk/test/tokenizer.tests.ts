@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import * as fs from "fs";
 
 import { Tokenizer } from "../tokenizer";
 
@@ -240,6 +241,21 @@ describe("Tokenizer", function() {
                 }
             }
             expect(actual.join(" ")).equals(expected);
+        }));
+    });
+    describe("scripts", function() {
+        const folder = this.file!.split(/[/\\]/).slice(-4, -1).join("/");
+        [
+            "hello-world.egg",
+        ].forEach(script => it(`should accept '${script}'`, function() {
+            const path = folder + "/scripts/" + script;
+            const tokenizer = Tokenizer.fromFile(path);
+            let raw = "";
+            for (let token = tokenizer.take(); token.kind != Tokenizer.Kind.EOF; token = tokenizer.take()) {
+                raw += token.raw;
+            }
+            const expected = fs.readFileSync(path, "utf8");
+            expect(raw).equals(expected);
         }));
     });
 });

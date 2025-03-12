@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import { BaseException, ExceptionParameters } from "./exception";
 
 function isLineSeparator(codepoint: number): boolean {
@@ -45,6 +46,22 @@ function isDigit(codepoint: number): boolean {
 
 function isIdentifierStart(codepoint: number): boolean {
     return (codepoint >= 0x0041 && codepoint <= 0x005A) || (codepoint >= 0x0061 && codepoint <= 0x007A) || (codepoint === 0x005F);
+}
+
+class InputFile implements Tokenizer.Input {
+    private input: string;
+    constructor(path: fs.PathLike, private offset: number = 0) {
+        this.input = fs.readFileSync(path, "utf8");
+        this.source = path.toString();
+    }
+    source?: string;
+    take(): number {
+        const output = this.input.codePointAt(this.offset);
+        if (this.input.charCodeAt(this.offset++) !== output) {
+            this.offset++;
+        }
+        return output ?? -1;
+    }
 }
 
 class InputString implements Tokenizer.Input {
@@ -340,8 +357,11 @@ export class Tokenizer {
         this.column++;
         return success(Tokenizer.Kind.Punctuation, output, output);
     }
-    static fromString(input: string): Tokenizer {
-        return new Tokenizer(new InputString(input));
+    static fromFile(path: fs.PathLike): Tokenizer {
+        return new Tokenizer(new InputFile(path));
+    }
+    static fromString(text: string): Tokenizer {
+        return new Tokenizer(new InputString(text));
     }
 }
 
