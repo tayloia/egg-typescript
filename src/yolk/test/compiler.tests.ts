@@ -14,10 +14,12 @@ describe("Compiler", function() {
             const test = TestProgram.fromString("print(\"hello, world\");");
             const output = test.compile();
             expect(output).not.undefined;
+            expect(test.logged.length).equals(0);
         });
         it("should reject malformed program", function() {
             const test = TestProgram.fromString("print(");
             expect(() => test.compile()).throws("<SOURCE>(1,7): Expected function argument, but got end-of-file instead");
+            expect(test.logged.length).equals(1);
         });
     });
     describe("fromFile", function() {
