@@ -1,10 +1,12 @@
+import * as fs from "fs";
+
 import { Compiler } from "./compiler";
 import { Linker } from "./linker";
 import { Logger, TestLogger } from "./logger";
 import { Parser } from "./parser";
 
 export class Module {
-    constructor(public readonly root: Compiler.Node) {
+    constructor(public readonly root: Compiler.Node, public readonly source: string) {
     }
 }
 
@@ -17,7 +19,7 @@ export class Program {
 }
 
 export class TestProgram extends TestLogger {
-    constructor(public input: string, public source: string = "<SOURCE>") {
+    private constructor(public input: string, public source: string) {
         super();
     }
     parse(): Parser.Node {
@@ -31,5 +33,11 @@ export class TestProgram extends TestLogger {
     }
     run(): void {
         return this.link().run(this);
+    }
+    static fromFile(path: fs.PathLike): TestProgram {
+        return new TestProgram(fs.readFileSync(path, "utf8"), path.toString());
+    }
+    static fromString(text: string, source: string = "<SOURCE>"): TestProgram {
+        return new TestProgram(text, source);
     }
 }

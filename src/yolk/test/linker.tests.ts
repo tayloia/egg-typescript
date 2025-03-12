@@ -6,7 +6,7 @@ import { TestProgram } from "../program";
 describe("Linker", function() {
     describe("simple", function() {
         it("should accept minimal program", function() {
-            const test = new TestProgram("print(\"hello, world\");");
+            const test = TestProgram.fromString("print(\"hello, world\");");
             const module = test.compile();
             const linker = new Linker().withLogger(test);
             linker.withModule(module);

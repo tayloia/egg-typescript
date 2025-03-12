@@ -4,11 +4,12 @@ import { Parser } from "./parser";
 import { Module } from "./program";
 
 class Impl extends Logger {
-    constructor(public input: Parser.Node, public logger: Logger) {
+    constructor(public input: Parser.Node, public source: string, public logger: Logger) {
         super();
     }
     compileModule(): Module {
-        return {} as Module;
+        const root = {} as Compiler.Node;
+        return new Module(root, this.source);
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
@@ -16,12 +17,11 @@ class Impl extends Logger {
 }
 
 export class Compiler {
-    parsed?: Parser.Node;
     constructor(public parser: Parser) {
     }
     compile(): Module {
-        this.parsed ??= this.parser.parse();
-        const impl = new Impl(this.parsed, this.logger);
+        const parsed = this.parser.parse();
+        const impl = new Impl(parsed, this.parser.input.source, this.logger);
         return impl.compileModule();
     }
     withLogger(logger: Logger): Compiler {
