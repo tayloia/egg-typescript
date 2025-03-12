@@ -6,20 +6,20 @@ describe("TestLogger", function() {
     describe("logging", function() {
         it("should log errors", function() {
             const logger = new TestLogger();
-            logger.error("hello world");
-            expect(logger.errors).deep.equals(["hello world"]);
+            logger.error("hello, world");
+            expect(logger.errors).deep.equals(["hello, world"]);
             expect(logger.logged.length).equals(1);
         });
         it("should log warnings", function() {
             const logger = new TestLogger();
-            logger.warning("hello world");
-            expect(logger.warnings).deep.equals(["hello world"]);
+            logger.warning("hello, world");
+            expect(logger.warnings).deep.equals(["hello, world"]);
             expect(logger.logged.length).equals(1);
         });
         it("should log prints", function() {
             const logger = new TestLogger();
-            logger.print("hello world");
-            expect(logger.prints).deep.equals(["hello world"]);
+            logger.print("hello, world");
+            expect(logger.prints).deep.equals(["hello, world"]);
             expect(logger.logged.length).equals(1);
         });
         it("should expand parameters", function() {

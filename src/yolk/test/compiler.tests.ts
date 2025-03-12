@@ -11,7 +11,7 @@ describe("Compiler", function() {
             expect(test.logged.length).equals(1);
         });
         it("should accept minimal program", function() {
-            const test = new TestProgram("print(\"hello world\");");
+            const test = new TestProgram("print(\"hello, world\");");
             const output = test.compile();
             expect(output).not.undefined;
         });

@@ -16,7 +16,7 @@ describe("Parser", function() {
             expect(output.children.length).equals(0);
         });
         it("should accept minimal program", function() {
-            const test = new TestProgram("print(\"hello world\");");
+            const test = new TestProgram("print(\"hello, world\");");
             const output = test.parse();
             expect(output.children.length).equals(1);
         });

@@ -90,7 +90,7 @@ describe("Tokenizer", function() {
     });
     describe("strings", function() {
         [
-            "hello world",
+            "hello, world",
             "quote=\"",
             "backslash=\\",
             "backspace=\b",
@@ -152,13 +152,13 @@ describe("Tokenizer", function() {
         it("should reject unterminated strings", function() {
             expect(tokenizeBad(`"`)).throws("(1,1): Unterminated string");
             expect(tokenizeBad(`"\\t\\t\\t`)).throws("(1,1): Unterminated string");
-            expect(tokenizeBad(`"hello world`)).throws("(1,1): Unterminated string");
+            expect(tokenizeBad(`"hello, world`)).throws("(1,1): Unterminated string");
             expect(tokenizeBad(`"\\r\\n12345`)).throws("(1,1): Unterminated string");
         });
         it("should reject end of line within strings", function() {
             expect(tokenizeBad(`"\n`)).throws("(1,1): End of line within string literal");
             expect(tokenizeBad(`"\\t\\t\\t\r`)).throws("(1,7): End of line within string literal");
-            expect(tokenizeBad(`"hello world\n`)).throws("(1,12): End of line within string literal");
+            expect(tokenizeBad(`"hello, world\n`)).throws("(1,13): End of line within string literal");
             expect(tokenizeBad(`"\\r\\n12345\r\n`)).throws("(1,10): End of line within string literal");
         });
     });
@@ -171,9 +171,9 @@ describe("Tokenizer", function() {
     });
     describe("comments", function() {
         [
-            ["// hello world", "// hello world"],
-            ["// hello world\r\n", "// hello world\n"],
-            ["/* hello world */", "/* hello world */"],
+            ["// hello, world", "// hello, world"],
+            ["// hello, world\r\n", "// hello, world\n"],
+            ["/* hello, world */", "/* hello, world */"],
             ["/* hello\r\nworld */", "/* hello\nworld */"],
         ].forEach(([input, expected]) => it(`should accept comment ${JSON.stringify(input)}`, function() {
             const token = tokenizeOne(input);

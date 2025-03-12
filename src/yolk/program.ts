@@ -12,7 +12,7 @@ export class Program {
     constructor(public readonly modules: Module[]) {
     }
     run(logger: Logger): void {
-        logger.print("Hello world"); // WIBBLE
+        logger.print("hello, world"); // WIBBLE
     }
 }
 

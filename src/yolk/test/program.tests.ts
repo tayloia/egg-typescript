@@ -5,12 +5,12 @@ import { TestProgram } from "../program";
 describe("Program", function() {
     describe("simple", function() {
         it("should accept minimal program", function() {
-            const test = new TestProgram("print(\"hello world\");");
+            const test = new TestProgram("print(\"hello, world\");");
             const program = test.link();
             expect(test.logged.length).equals(0);
             program.run(test);
             expect(test.logged.length).equals(1);
-            expect(test.prints).deep.equals(["Hello world"]);
+            expect(test.prints).deep.equals(["hello, world"]);
         });
     });
 });
