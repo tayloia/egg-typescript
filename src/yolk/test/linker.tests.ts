@@ -15,15 +15,13 @@ describe("Linker", function() {
             expect(test.logged.length).equals(0);
         });
     });
-    describe("fromFile", function() {
-        const folder = this.file!.split(/[/\\]/).slice(-4, -1).join("/");
+    describe("fromScript", function() {
         [
-            "hello-world.egg",
+            "scripts/hello-world.egg",
         ].forEach(script => it(`should accept '${script}'`, function() {
-            const path = folder + "/scripts/" + script;
-            const program = TestProgram.fromFile(path).link();
+            const program = TestProgram.fromScript(this, script).link();
             expect(program.modules.length).equals(1);
-            expect(program.modules[0].source).equals(path);
+            expect(program.modules[0].source).equals(TestProgram.makePath(this, script));
         }));
     });
 });

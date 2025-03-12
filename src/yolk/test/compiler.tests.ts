@@ -22,14 +22,12 @@ describe("Compiler", function() {
             expect(test.logged.length).equals(1);
         });
     });
-    describe("fromFile", function() {
-        const folder = this.file!.split(/[/\\]/).slice(-4, -1).join("/");
+    describe("fromScript", function() {
         [
-            "hello-world.egg",
+            "scripts/hello-world.egg",
         ].forEach(script => it(`should accept '${script}'`, function() {
-            const path = folder + "/scripts/" + script;
-            const module = TestProgram.fromFile(path).compile();
-            expect(module.source).equals(path);
+            const module = TestProgram.fromScript(this, script).compile();
+            expect(module.source).equals(TestProgram.makePath(this, script));
         }));
     });
 });

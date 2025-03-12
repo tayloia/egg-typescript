@@ -3,7 +3,7 @@ import { expect } from "chai";
 import { TestProgram } from "../program";
 
 describe("Parser", function() {
-    describe("simple", function() {
+    describe("fromString", function() {
         it("should reject empty input", function() {
             const test = TestProgram.fromString("");
             expect(() => test.parse()).throws("<SOURCE>: Empty input");
@@ -20,6 +20,14 @@ describe("Parser", function() {
             const output = test.parse();
             expect(output.children.length).equals(1);
         });
+    });
+    describe("fromScript", function() {
+        [
+            "scripts/hello-world.egg",
+        ].forEach(script => it(`should accept '${script}'`, function() {
+            const output = TestProgram.fromScript(this, script).parse();
+            expect(output.children.length).equals(1);
+        }));
     });
     describe("statement function call", function() {
         it("should reject unterminated function arguments", function() {
@@ -62,15 +70,5 @@ describe("Parser", function() {
             const output = test.parse();
             expect(output.children.length).equals(1);
         });
-    });
-    describe("scripts", function() {
-        const folder = this.file!.split(/[/\\]/).slice(-4, -1).join("/");
-        [
-            "hello-world.egg",
-        ].forEach(script => it(`should accept '${script}'`, function() {
-            const path = folder + "/scripts/" + script;
-            const output = TestProgram.fromFile(path).parse();
-            expect(output.children.length).equals(1);
-        }));
     });
 });

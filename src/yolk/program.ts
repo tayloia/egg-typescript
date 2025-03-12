@@ -19,7 +19,7 @@ export class Program {
 }
 
 export class TestProgram extends TestLogger {
-    private constructor(public input: string, public source: string) {
+    private constructor(private input: string, private source: string) {
         super();
     }
     parse(): Parser.Node {
@@ -37,7 +37,14 @@ export class TestProgram extends TestLogger {
     static fromFile(path: fs.PathLike): TestProgram {
         return new TestProgram(fs.readFileSync(path, "utf8"), path.toString());
     }
+    static fromScript(mocha: Mocha.Context, script: string, depth: number = 3): TestProgram {
+        const path = TestProgram.makePath(mocha, script, depth);
+        return new TestProgram(fs.readFileSync(path, "utf8"), path);
+    }
     static fromString(text: string, source: string = "<SOURCE>"): TestProgram {
         return new TestProgram(text, source);
+    }
+    static makePath(mocha: Mocha.Context, script: string, depth: number = 3): string {
+        return mocha.test!.file!.split(/[/\\]/).slice(-1 - depth, -1).join("/") + "/" + script;
     }
 }

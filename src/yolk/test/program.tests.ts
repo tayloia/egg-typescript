@@ -13,17 +13,13 @@ describe("Program", function() {
             expect(test.prints).deep.equals(["hello, world"]);
         });
     });
-    describe("fromFile", function() {
-        const folder = this.file!.split(/[/\\]/).slice(-4, -1).join("/");
-        [
-            "hello-world.egg",
-        ].forEach(script => it(`should accept '${script}'`, function() {
-            const path = folder + "/scripts/" + script;
-            const test = TestProgram.fromFile(path);
+    describe("fromScript", function() {
+        it("should accept minimal script", function() {
+            const test = TestProgram.fromScript(this, "scripts/hello-world.egg");
             expect(test.logged.length).equals(0);
             test.run();
             expect(test.logged.length).equals(1);
             expect(test.prints).deep.equals(["hello, world"]);
-        }));
+        });
     });
 });
