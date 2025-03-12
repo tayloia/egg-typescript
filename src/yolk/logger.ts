@@ -83,22 +83,3 @@ export class ConsoleLogger extends Logger {
         }
     }
 }
-
-export class TestLogger extends Logger {
-    logged: Logger.Entry[] = [];
-    log(entry: Logger.Entry): void {
-        this.logged.push(entry);
-    }
-    filter(severity: Logger.Severity): string[] {
-        return this.logged.filter(log => log.severity === severity).map(log => log.format())
-    }
-    get errors() {
-        return this.filter(Logger.Severity.Error);
-    }
-    get warnings() {
-        return this.filter(Logger.Severity.Warning);
-    }
-    get prints() {
-        return this.filter(Logger.Severity.Print);
-    }
-}

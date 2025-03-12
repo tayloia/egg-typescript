@@ -1,6 +1,6 @@
 import { expect } from "chai";
 
-import { TestProgram } from "../program";
+import { Test, TestProgram } from "../test/testing";
 
 describe("Compiler", function() {
     describe("fromString", function() {
@@ -27,7 +27,7 @@ describe("Compiler", function() {
             "scripts/hello-world.egg",
         ].forEach(script => it(`should accept '${script}'`, function() {
             const module = TestProgram.fromScript(this, script).compile();
-            expect(module.source).equals(TestProgram.makePath(this, script));
+            expect(module.source).equals(Test.path(this, script));
         }));
     });
 });
