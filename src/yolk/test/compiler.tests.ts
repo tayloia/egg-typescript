@@ -3,7 +3,7 @@ import { expect } from "chai";
 import { TestProgram } from "../program";
 
 describe("Compiler", function() {
-    describe("simple", function() {
+    describe("fromString", function() {
         it("should reject empty input", function() {
             const test = TestProgram.fromString("");
             expect(() => test.compile()).throws("<SOURCE>: Empty input");
@@ -19,5 +19,15 @@ describe("Compiler", function() {
             const test = TestProgram.fromString("print(");
             expect(() => test.compile()).throws("<SOURCE>(1,7): Expected function argument, but got end-of-file instead");
         });
+    });
+    describe("fromFile", function() {
+        const folder = this.file!.split(/[/\\]/).slice(-4, -1).join("/");
+        [
+            "hello-world.egg",
+        ].forEach(script => it(`should accept '${script}'`, function() {
+            const path = folder + "/scripts/" + script;
+            const module = TestProgram.fromFile(path).compile();
+            expect(module.source).equals(path);
+        }));
     });
 });

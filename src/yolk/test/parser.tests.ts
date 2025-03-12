@@ -69,8 +69,8 @@ describe("Parser", function() {
             "hello-world.egg",
         ].forEach(script => it(`should accept '${script}'`, function() {
             const path = folder + "/scripts/" + script;
-            const module = TestProgram.fromFile(path).compile();
-            expect(module.source).equals(path);
+            const output = TestProgram.fromFile(path).parse();
+            expect(output.children.length).equals(1);
         }));
     });
 });
