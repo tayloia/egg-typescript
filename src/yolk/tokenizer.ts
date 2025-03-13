@@ -1,4 +1,6 @@
 import * as fs from "fs";
+
+import { assert } from "./assertion";
 import { BaseException, ExceptionParameters } from "./exception";
 
 function isLineSeparator(codepoint: number): boolean {
@@ -89,8 +91,8 @@ export class Tokenizer {
         return this.taken[lookahead];
     }
     private pop(count: number = 1): string {
-        console.assert(count > 0);
-        console.assert(this.taken.length >= count);
+        assert(count > 0);
+        assert(this.taken.length >= count);
         const output = String.fromCodePoint(...this.taken.slice(0, count));
         this.taken = this.taken.slice(count);
         return output;

@@ -1,3 +1,4 @@
+import { assert } from "./assertion";
 import { BaseException, ExceptionParameters } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
 import { Tokenizer } from "./tokenizer";
@@ -40,7 +41,7 @@ class Input {
     constructor(public source: string, public tokenizer: Tokenizer) {}
     peek(lookahead: number = 0): Token {
         // Fill the taken array with enough tokens to satisfy the lookahead
-        console.assert(lookahead >= 0);
+        assert(lookahead >= 0);
         while (lookahead >= this.taken.length) {
             const incoming = this.tokenizer.take();
             if (incoming.kind === Tokenizer.Kind.EOF) {
@@ -53,44 +54,38 @@ class Input {
         return this.taken[lookahead];
     }
     drop(count: number): void {
-        console.assert(count > 0);
-        console.assert(this.taken.length >= count);
+        assert(count > 0);
+        assert(this.taken.length >= count);
         this.taken = this.taken.slice(count);
     }
 }
 
-enum Kind {
-    Module = "module",
-    Identifier = "identifier",
-    NullLiteral = "null-literal",
-    BooleanLiteral = "boolean-literal",
-    IntegerLiteral = "integer-literal",
-    StringLiteral = "string-literal",
-    FunctionArguments = "function-arguments",
-}
-
 class Node implements Parser.Node {
-    private constructor(public kind: Kind, public children: Node[] = [], public value?: boolean | number | string) {}
+    private constructor(public kind: Parser.Kind, public children: Node[] = [], public value?: boolean | number | string) {}
     static createModule(children: Node[]): Node {
-        return new Node(Kind.Module, children);
+        return new Node(Parser.Kind.Module, children);
     }
     static createNullLiteral(): Node {
-        return new Node(Kind.NullLiteral, []);
+        return new Node(Parser.Kind.NullLiteral, []);
     }
     static createBooleanLiteral(value: boolean): Node {
-        return new Node(Kind.NullLiteral, [], value);
+        return new Node(Parser.Kind.NullLiteral, [], value);
     }
     static createIntegerLiteral(value: number): Node {
-        return new Node(Kind.IntegerLiteral, [], value);
+        return new Node(Parser.Kind.IntegerLiteral, [], value);
     }
     static createStringLiteral(value: string): Node {
-        return new Node(Kind.StringLiteral, [], value);
+        return new Node(Parser.Kind.StringLiteral, [], value);
     }
     static createIdentifier(name: string): Node {
-        return new Node(Kind.Identifier, [], name);
+        return new Node(Parser.Kind.Identifier, [], name);
+    }
+    static createFunctionCall(callee: Node, fnargs: Node): Node {
+        assert.eq(fnargs.kind, Parser.Kind.FunctionArguments);
+        return new Node(Parser.Kind.FunctionCall, [callee, fnargs]);
     }
     static createFunctionArguments(nodes: Node[]): Node {
-        return new Node(Kind.FunctionArguments, nodes);
+        return new Node(Parser.Kind.FunctionArguments, nodes);
     }
 }
 
@@ -113,7 +108,7 @@ class Impl extends Logger {
     constructor(public input: Input, public logger: Logger) {
         super();
     }
-    parseModule(): Node {
+    expectModule(): Node {
         let incoming = this.input.peek();
         if (incoming.underlying.kind === Tokenizer.Kind.EOF && incoming.previous === Tokenizer.Kind.EOF) {
             this.fatal("Empty input", { source: this.input.source });
@@ -135,16 +130,17 @@ class Impl extends Logger {
         this.throwUnexpected("Expected module statement", 0);
     }
     private parseFunctionCall(lookahead: number): Success | undefined {
-        let success;
-        if ((success = this.parseIdentifier(lookahead))) {
-            if (this.peekPunctuation(success.lookahead) === "(") {
-                return this.expectFunctionArguments(success.lookahead);
+        let callee;
+        if ((callee = this.parseIdentifier(lookahead))) {
+            if (this.peekPunctuation(callee.lookahead) === "(") {
+                const fnargs = this.expectFunctionArguments(callee.lookahead);
+                return new Success(Node.createFunctionCall(callee.node, fnargs.node), fnargs.lookahead);
             }
         }
         return undefined;
     }
     private expectFunctionArguments(lookahead: number): Success {
-        console.assert(this.peekPunctuation(lookahead) === "(");
+        assert(this.peekPunctuation(lookahead) === "(");
         lookahead++;
         const nodes = [];
         if (this.peekPunctuation(lookahead) !== ")") {
@@ -162,7 +158,7 @@ class Impl extends Logger {
                 }
             }
         }
-        console.assert(this.peekPunctuation(lookahead) === ")");
+        assert(this.peekPunctuation(lookahead) === ")");
         return this.success(Node.createFunctionArguments(nodes), lookahead + 1);
     }
     private parseIdentifier(lookahead: number): Success | undefined {
@@ -251,13 +247,13 @@ class Impl extends Logger {
         return new Success(node, lookahead);
     }
     commit(success: Success): Node {
-        console.assert(success.failed === false);
+        assert(success.failed === false);
         this.input.drop(success.lookahead)
         return success.node;
     } 
     throw(failure: Failure): never {
-        console.assert(failure.failed === true);
-        console.assert(failure.logs.length > 0);
+        assert(failure.failed === true);
+        assert(failure.logs.length > 0);
         let severist = failure.logs[0];
         for (const log of failure.logs) {
             this.logger.log(log);
@@ -281,7 +277,7 @@ export class Parser {
     }
     parse(): Parser.Node {
         const impl = new Impl(this.input, this.logger);
-        return impl.parseModule();
+        return impl.expectModule();
     }
     withLogger(logger: Logger): Parser {
         this._logger = logger;
@@ -304,7 +300,19 @@ export namespace Parser {
             super("ParserException", message, parameters);
         }
     }
+    export enum Kind {
+        Module = "module",
+        Identifier = "identifier",
+        NullLiteral = "null-literal",
+        BooleanLiteral = "boolean-literal",
+        IntegerLiteral = "integer-literal",
+        StringLiteral = "string-literal",
+        FunctionCall = "function-call",
+        FunctionArguments = "function-arguments",
+    }
     export interface Node {
+        kind: Kind;
         children: Node[];
+        value?: string | number | boolean;
     }
 }

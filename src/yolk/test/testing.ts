@@ -6,6 +6,7 @@ import { Logger } from "../logger";
 import { Parser } from "../parser";
 import { Module, Program } from "../program";
 import { AssertionError } from "assertion-error";
+import { assert } from "../assertion";
 
 export namespace Testing {
     function basePath(mocha: Mocha.Context | Mocha.Suite, depth: number): string {
@@ -94,7 +95,7 @@ export class TestProgram extends TestLogger {
         const makeStack = (line: number) => {
             return `    at script (${this.source}:${line})`;
         }
-        console.assert(this.logged.length === 0);
+        assert(this.logged.length === 0);
         this.run();
         let logged = 0;
         let line = 0;

@@ -1,3 +1,4 @@
+import { assert } from "./assertion";
 import { BaseException, ExceptionParameters } from "./exception";
 import { Logger } from "./logger";
 import { Parser } from "./parser";
@@ -11,8 +12,7 @@ enum Kind {
 }
 
 class Node implements Compiler.Node {
-    constructor(public readonly kind: Kind, public readonly children: Node[] = []) {}
-    value?: string | number | boolean | null;
+    constructor(public readonly kind: Kind, public readonly children: Node[] = [], public readonly value?: string | number | boolean) {}
 }
 
 class Impl extends Logger {
@@ -20,9 +20,36 @@ class Impl extends Logger {
         super();
     }
     compileModule(): Module {
-        const root = new Node(Kind.Module);
-        root.children.push(new Node(Kind.StmtCall));
+        const statements = this.input.children.map(child => this.compileModuleStatement(child));
+        const root = new Node(Kind.Module, statements);
         return new Module(root, this.source);
+    }
+    compileModuleStatement(pnode: Parser.Node): Node {
+        switch (pnode.kind) {
+            case Parser.Kind.FunctionCall:
+                return new Node(Kind.StmtCall, [this.compileExpr(pnode.children[0]), ...this.compileExprArguments(pnode.children[1])])
+            case undefined:
+                break;
+        }
+        assert.fail("Unknown node kind in compileModuleStatement: {kind}", {kind:pnode.kind});
+    }
+    compileExpr(pnode: Parser.Node): Node {
+        switch (pnode.kind) {
+            case Parser.Kind.Identifier:
+                return new Node(Kind.LiteralIdentifier, [], pnode.value);
+            case Parser.Kind.StringLiteral:
+                return new Node(Kind.LiteralString, [], pnode.value);
+            case undefined:
+                break;
+        }
+        assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
+    }
+    compileExprArguments(pnode: Parser.Node): Node[] {
+        assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
+        return pnode.children.map(child => this.compileExprArgument(child));
+    }
+    compileExprArgument(pnode: Parser.Node): Node {
+        return this.compileExpr(pnode);
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);

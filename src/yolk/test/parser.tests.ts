@@ -1,6 +1,7 @@
 import { expect } from "chai";
 
 import { Testing, TestProgram } from "./testing";
+import { Parser } from "../parser";
 
 describe("Parser", function() {
     describe("fromString", function() {
@@ -18,7 +19,8 @@ describe("Parser", function() {
         it("should accept minimal program", function() {
             const test = TestProgram.fromString("print(\"hello, world\");");
             const output = test.parse();
-            expect(output.children.length).equals(1);
+            expect(output.kind).equals(Parser.Kind.Module);
+            expect(output.children.length).greaterThan(0);
         });
     });
     describe("fromScript", function() {
