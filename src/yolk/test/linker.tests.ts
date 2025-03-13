@@ -1,7 +1,7 @@
 import { expect } from "chai";
 
 import { Linker } from "../linker";
-import { Test, TestProgram } from "../test/testing";
+import { Test, TestProgram } from "./testing";
 
 describe("Linker", function() {
     describe("fromString", function() {

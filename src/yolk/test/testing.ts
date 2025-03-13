@@ -55,6 +55,14 @@ export class TestProgram extends TestLogger {
     run(): void {
         return this.link().run(this);
     }
+    test(): void {
+        const lines = this.input.split(/\r\n|\r|\n/);
+        let line = 0;
+        for (const text of lines) {
+            ++line;
+            console.log(line, text);
+        }
+    }
     static fromFile(path: fs.PathLike): TestProgram {
         return new TestProgram(fs.readFileSync(path, "utf8"), path.toString());
     }

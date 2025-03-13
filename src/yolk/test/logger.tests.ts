@@ -1,6 +1,6 @@
 import { expect } from "chai";
 
-import { TestLogger } from "../test/testing";
+import { TestLogger } from "./testing";
 
 describe("TestLogger", function() {
     describe("logging", function() {

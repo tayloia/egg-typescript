@@ -1,6 +1,6 @@
 import { expect } from "chai";
 
-import { Test, TestProgram } from "../test/testing";
+import { Test, TestProgram } from "./testing";
 
 describe("Compiler", function() {
     describe("fromString", function() {
