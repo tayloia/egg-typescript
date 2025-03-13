@@ -3,12 +3,25 @@ import { Logger } from "./logger";
 import { Parser } from "./parser";
 import { Module } from "./program";
 
+enum Kind {
+    Module = "module",
+    StmtCall = "stmt-call",
+    LiteralIdentifier = "literal-identifier",
+    LiteralString = "literal-string",
+}
+
+class Node implements Compiler.Node {
+    constructor(public readonly kind: Kind, public readonly children: Node[] = []) {}
+    value?: string | number | boolean | null;
+}
+
 class Impl extends Logger {
     constructor(public input: Parser.Node, public source: string, public logger: Logger) {
         super();
     }
     compileModule(): Module {
-        const root = {} as Compiler.Node;
+        const root = new Node(Kind.Module);
+        root.children.push(new Node(Kind.StmtCall));
         return new Module(root, this.source);
     }
     log(entry: Logger.Entry): void {

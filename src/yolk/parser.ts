@@ -60,6 +60,7 @@ class Input {
 }
 
 enum Kind {
+    Module = "module",
     Identifier = "identifier",
     NullLiteral = "null-literal",
     BooleanLiteral = "boolean-literal",
@@ -69,7 +70,10 @@ enum Kind {
 }
 
 class Node implements Parser.Node {
-    private constructor(public kind: Kind, public children: Node[], public value?: boolean | number | string) {}
+    private constructor(public kind: Kind, public children: Node[] = [], public value?: boolean | number | string) {}
+    static createModule(children: Node[]): Node {
+        return new Node(Kind.Module, children);
+    }
     static createNullLiteral(): Node {
         return new Node(Kind.NullLiteral, []);
     }
@@ -109,7 +113,7 @@ class Impl extends Logger {
     constructor(public input: Input, public logger: Logger) {
         super();
     }
-    parseModule(): Parser.Node {
+    parseModule(): Node {
         let incoming = this.input.peek();
         if (incoming.underlying.kind === Tokenizer.Kind.EOF && incoming.previous === Tokenizer.Kind.EOF) {
             this.fatal("Empty input", { source: this.input.source });
@@ -120,7 +124,7 @@ class Impl extends Logger {
             children.push(node);
             incoming = this.input.peek();
         }
-        return { children } as Parser.Node;
+        return Node.createModule(children);
     }
     private expectModuleStatement(): Node {
         let success;

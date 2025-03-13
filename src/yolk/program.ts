@@ -9,8 +9,7 @@ function assert(predicate: boolean): void {
 }
 
 class Runner {
-    constructor(public program: Program, public logger: Logger) {
-    }
+    constructor(public program: Program, public logger: Logger) {}
     run(): void {
         assert(this.program.modules.length === 1);
         this.logger.print("hello, world");
@@ -18,13 +17,11 @@ class Runner {
 }
 
 export class Module {
-    constructor(public readonly root: Compiler.Node, public readonly source: string) {
-    }
+    constructor(public readonly root: Compiler.Node, public readonly source: string) {}
 }
 
 export class Program {
-    constructor(public readonly modules: Module[]) {
-    }
+    constructor(public readonly modules: Module[]) {}
     run(logger: Logger): void {
         const runner = new Runner(this, logger);
         runner.run();

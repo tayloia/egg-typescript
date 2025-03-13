@@ -28,6 +28,7 @@ describe("Compiler", function() {
             ...Testing.findPath(this, "scripts/test-*.egg")
         ].forEach(script => it(`should accept '${script}'`, function() {
             const module = TestProgram.fromScript(this, script).compile();
+            expect(module.root.children).not.empty;
             expect(module.source).equals(Testing.makePath(this, script));
         }));
     });
