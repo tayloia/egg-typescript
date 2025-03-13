@@ -5,6 +5,7 @@ import { Linker } from "../linker";
 import { Logger } from "../logger";
 import { Parser } from "../parser";
 import { Module, Program } from "../program";
+import { AssertionError } from "assertion-error";
 
 export namespace Testing {
     function basePath(mocha: Mocha.Context | Mocha.Suite, depth: number): string {
@@ -17,6 +18,14 @@ export namespace Testing {
     export function findPath(mocha: Mocha.Context | Mocha.Suite, wildcard: string, depth: number = 3): string[] {
         const cwd = basePath(mocha, depth);
         return fs.globSync(wildcard, {cwd}).map(x => x.replace(/\\/g, "/"));
+    }
+    export function fail(message: string, actual?: unknown, expected?: unknown, stack?: string): never {
+        // See https://github.com/chaijs/chai/blob/main/lib/chai/interface/expect.js
+        const error = new AssertionError(message, { actual, expected }, Testing.fail);
+        if (stack) {
+            error.stack = error.stack.replace(/^ {4}at /m, stack + "\n    at ");
+        }
+        throw error;
     }
 }
 
@@ -53,14 +62,59 @@ export class TestProgram extends TestLogger {
         return new Linker().withModule(this.compile()).link();
     }
     run(): void {
-        return this.link().run(this);
+        this.link().run(this);
     }
     test(): void {
-        const lines = this.input.split(/\r\n|\r|\n/);
+        const makeExpected = (line: string) => {
+            if (line.startsWith("///>")) {
+                return line.slice(4);
+            }
+            if (line.startsWith("///<")) {
+                return line.slice(3);
+            }
+            return undefined;
+        };
+        const makeActual = (index: number) => {
+            const entry = this.logged[index];
+            switch (entry?.severity) {
+                case Logger.Severity.Error:
+                    return "<ERROR>" + entry.format();
+                case Logger.Severity.Warning:
+                    return "<WARNING>" + entry.format();
+                case Logger.Severity.Info:
+                    return "<INFO>" + entry.format();
+                case Logger.Severity.Debug:
+                    return "<DEBUG>" + entry.format();
+                case Logger.Severity.Trace:
+                    return "<TRACE>" + entry.format();
+                case Logger.Severity.Print:
+                    return entry.message;
+            }
+        };
+        const makeStack = (line: number) => {
+            return `    at script (${this.source}:${line})`;
+        }
+        console.assert(this.logged.length === 0);
+        this.run();
+        let logged = 0;
         let line = 0;
-        for (const text of lines) {
+        const matches = this.input.matchAll(/([^\r\n]*)\r?\n?/g);
+        for (const match of matches) {
             ++line;
-            console.log(line, text);
+            const expected = makeExpected(match[1]);
+            if (expected) {
+                const actual = makeActual(logged++);
+                if (actual === undefined) {
+                    Testing.fail(`Missing script output: '${expected}'`, actual, expected, makeStack(line));
+                }
+                if (actual !== expected) {
+                    Testing.fail(`Expected ${JSON.stringify(expected)}, but got ${JSON.stringify(actual)}`, actual, expected, makeStack(line));
+                }
+            }
+        }
+        if (logged !== this.logged.length) {
+            const actual = makeActual(logged++);
+            Testing.fail(`Extraneous script output: '${actual}'`, actual, undefined, makeStack(line));
         }
     }
     static fromFile(path: fs.PathLike): TestProgram {
