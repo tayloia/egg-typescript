@@ -1,7 +1,7 @@
 import { expect } from "chai";
 
 import { Linker } from "../linker";
-import { Test, TestProgram } from "./testing";
+import { Testing, TestProgram } from "./testing";
 
 describe("Linker", function() {
     describe("fromString", function() {
@@ -18,11 +18,11 @@ describe("Linker", function() {
     describe("fromScript", function() {
         [
             "scripts/hello-world.egg",
-            ...Test.findPath(this, "scripts/test-*.egg")
+            ...Testing.findPath(this, "scripts/test-*.egg")
         ].forEach(script => it(`should accept '${script}'`, function() {
             const program = TestProgram.fromScript(this, script).link();
             expect(program.modules.length).equals(1);
-            expect(program.modules[0].source).equals(Test.makePath(this, script));
+            expect(program.modules[0].source).equals(Testing.makePath(this, script));
         }));
     });
 });

@@ -6,7 +6,7 @@ import { Logger } from "../logger";
 import { Parser } from "../parser";
 import { Module, Program } from "../program";
 
-export namespace Test {
+export namespace Testing {
     function basePath(mocha: Mocha.Context | Mocha.Suite, depth: number): string {
         const path = ("test" in mocha) ? mocha.test!.file! : mocha.file!;
         return path.split(/[/\\]/).slice(-1 - depth, -1).join("/");
@@ -67,7 +67,7 @@ export class TestProgram extends TestLogger {
         return new TestProgram(fs.readFileSync(path, "utf8"), path.toString());
     }
     static fromScript(mocha: Mocha.Context, script: string, depth: number = 3): TestProgram {
-        const path = Test.makePath(mocha, script, depth);
+        const path = Testing.makePath(mocha, script, depth);
         return new TestProgram(fs.readFileSync(path, "utf8"), path);
     }
     static fromString(text: string, source: string = "<SOURCE>"): TestProgram {

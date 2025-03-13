@@ -2,6 +2,7 @@ import { expect } from "chai";
 import * as fs from "fs";
 
 import { Tokenizer } from "../tokenizer";
+import { Testing } from "./testing";
 
 describe("Tokenizer", function() {
     function* tokenize(input: string): Generator<Tokenizer.Token> {
@@ -244,11 +245,11 @@ describe("Tokenizer", function() {
         }));
     });
     describe("scripts", function() {
-        const folder = this.file!.split(/[/\\]/).slice(-4, -1).join("/");
         [
-            "hello-world.egg",
+            "scripts/hello-world.egg",
+            ...Testing.findPath(this, "scripts/test-*.egg")
         ].forEach(script => it(`should accept '${script}'`, function() {
-            const path = folder + "/scripts/" + script;
+            const path = Testing.makePath(this, script);
             const tokenizer = Tokenizer.fromFile(path);
             let raw = "";
             for (let token = tokenizer.take(); token.kind != Tokenizer.Kind.EOF; token = tokenizer.take()) {
