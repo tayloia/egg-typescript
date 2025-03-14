@@ -217,6 +217,7 @@ class Impl extends Logger {
         return this.parseNullLiteral(lookahead)
             ?? this.parseBooleanLiteral(lookahead)
             ?? this.parseIntegerLiteral(lookahead)
+            ?? this.parseFloatLiteral(lookahead)
             ?? this.parseStringLiteral(lookahead);
     }
     private parseIdentifier(lookahead: number): Success | undefined {
@@ -247,6 +248,14 @@ class Impl extends Logger {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Integer) {
             const node = Node.createLiteral(Value.fromInt(token.value as bigint));
+            return this.success(node, lookahead + 1);
+        }
+        return undefined;
+    }
+    private parseFloatLiteral(lookahead: number): Success | undefined {
+        const token = this.input.peek(lookahead);
+        if (token.kind === Tokenizer.Kind.Float) {
+            const node = Node.createLiteral(Value.fromFloat(token.value as number));
             return this.success(node, lookahead + 1);
         }
         return undefined;
