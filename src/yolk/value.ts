@@ -33,6 +33,13 @@ export class Value {
         assert.eq(this.kind, Value.Kind.String);
         return this.underlying as string;
     }
+    asFloat(): number {
+        if (this.kind === Value.Kind.Float) {
+            return this.underlying as number;
+        }
+        assert.eq(this.kind, Value.Kind.Int);
+        return Number(this.underlying as bigint);
+    }
     static fromVoid() {
         return new Value(null, Value.Kind.Void);
     }

@@ -11,23 +11,23 @@ abstract class Node implements Program.Node {
     evaluateBinaryOperator(lhs: Value, op: string, rhs: Value): Value {
         switch (op) {
             case "+":
-                if (lhs.kind === Value.Kind.Float && rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.getFloat() + rhs.getFloat());
+                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
+                    return Value.fromFloat(lhs.asFloat() + rhs.asFloat());
                 }
                 return Value.fromInt(lhs.getInt() + rhs.getInt());
             case "-":
-                if (lhs.kind === Value.Kind.Float && rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.getFloat() - rhs.getFloat());
+                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
+                    return Value.fromFloat(lhs.asFloat() - rhs.asFloat());
                 }
                 return Value.fromInt(lhs.getInt() - rhs.getInt());
             case "*":
-                if (lhs.kind === Value.Kind.Float && rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.getFloat() * rhs.getFloat());
+                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
+                    return Value.fromFloat(lhs.asFloat() * rhs.asFloat());
                 }
                 return Value.fromInt(lhs.getInt() * rhs.getInt());
             case "/":
-                if (lhs.kind === Value.Kind.Float && rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.getFloat() / rhs.getFloat());
+                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
+                    return Value.fromFloat(lhs.asFloat() / rhs.asFloat());
                 }
                 return Value.fromInt(lhs.getInt() / rhs.getInt());
         }
