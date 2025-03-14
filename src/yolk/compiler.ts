@@ -33,12 +33,23 @@ class Impl extends Logger {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
                 return new Node(Compiler.Kind.LiteralIdentifier, [], pnode.value);
-            case Parser.Kind.StringLiteral:
+            case Parser.Kind.LiteralBoolean:
+                return new Node(Compiler.Kind.LiteralBoolean, [], pnode.value);
+            case Parser.Kind.LiteralInteger:
+                return new Node(Compiler.Kind.LiteralInteger, [], pnode.value);
+            case Parser.Kind.LiteralFloat:
+                return new Node(Compiler.Kind.LiteralFloat, [], pnode.value);
+            case Parser.Kind.LiteralString:
                 return new Node(Compiler.Kind.LiteralString, [], pnode.value);
+            case Parser.Kind.OperatorBinary:
+                return this.compileExprBinary(pnode.children[0], pnode.value as string, pnode.children[1]);
             case undefined:
                 break;
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
+    }
+    compileExprBinary(plhs: Parser.Node, op: string, prhs: Parser.Node): Node {
+        return new Node(Compiler.Kind.ValueOperatorBinary, [this.compileExpr(plhs), this.compileExpr(prhs)], op);
     }
     compileExprArguments(pnode: Parser.Node): Node[] {
         assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
@@ -82,7 +93,11 @@ export namespace Compiler {
         Module = "module",
         StmtCall = "stmt-call",
         LiteralIdentifier = "literal-identifier",
+        LiteralBoolean = "literal-boolean",
+        LiteralInteger = "literal-integer",
+        LiteralFloat = "literal-float",
         LiteralString = "literal-string",
+        ValueOperatorBinary = "value-operator-binary",
     }
     export interface Node {
         kind: Kind;

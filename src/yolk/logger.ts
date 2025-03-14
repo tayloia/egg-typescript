@@ -1,3 +1,5 @@
+import { assert } from "./assertion";
+
 export abstract class Logger {
     abstract log(entry: Logger.Entry): void;
     error(message: string, parameters?: Logger.Parameters) {
@@ -51,7 +53,9 @@ export namespace Logger {
     }
     export type Parameters = Record<string, unknown>;
     export class Entry {
-        constructor(public severity: Logger.Severity, public message: string, public parameters?: Logger.Parameters) {}
+        constructor(public severity: Logger.Severity, public message: string, public parameters?: Logger.Parameters) {
+            assert(typeof message === "string");
+        }
         format() {
             return this.parameters ? Logger.format(this.message, this.parameters) : this.message;
         }

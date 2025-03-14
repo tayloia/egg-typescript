@@ -32,7 +32,7 @@ class Node_StmtCall extends Node {
     }
     execute(runner: Program.Runner): void {
         const text = this.args.evaluate(runner);
-        runner.print(text as string); // TODO
+        runner.print(String(text)); // TODO
     }
 }
 
@@ -48,12 +48,66 @@ class Node_LiteralIdentifier extends Node {
     }
 }
 
+class Node_LiteralBoolean extends Node {
+    constructor(public value: boolean) {
+        super();
+    }
+    evaluate(runner_: Program.Runner): unknown {
+        return this.value;
+    }
+    execute(runner: Program.Runner): void {
+        runner.unimplemented();
+    }
+}
+
+class Node_LiteralInteger extends Node {
+    constructor(public value: number) {
+        super();
+    }
+    evaluate(runner_: Program.Runner): unknown {
+        return this.value;
+    }
+    execute(runner: Program.Runner): void {
+        runner.unimplemented();
+    }
+}
+
+class Node_LiteralFloat extends Node {
+    constructor(public value: number) {
+        super();
+    }
+    evaluate(runner_: Program.Runner): unknown {
+        return this.value;
+    }
+    execute(runner: Program.Runner): void {
+        runner.unimplemented();
+    }
+}
+
 class Node_LiteralString extends Node {
     constructor(public value: string) {
         super();
     }
     evaluate(runner_: Program.Runner): unknown {
         return this.value;
+    }
+    execute(runner: Program.Runner): void {
+        runner.unimplemented();
+    }
+}
+
+class Node_ValueOperatorBinary extends Node {
+    constructor(public lhs: Node, public op: string, public rhs: Node) {
+        super();
+    }
+    evaluate(runner: Program.Runner): unknown {
+        switch (this.op) {
+            case "+":
+                return (this.lhs.evaluate(runner) as number) + (this.rhs.evaluate(runner) as number);
+            case "*":
+                return (this.lhs.evaluate(runner) as number) * (this.rhs.evaluate(runner) as number);
+        }
+        assert.fail("Unknown binary operator in Node_ValueOperatorBinary: '{op}'", {op:this.op});
     }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
@@ -85,9 +139,21 @@ class Impl extends Logger {
             case Compiler.Kind.LiteralIdentifier:
                 assert.eq(node.children.length, 0);
                 return new Node_LiteralIdentifier(node.value as string);
+            case Compiler.Kind.LiteralBoolean:
+                assert.eq(node.children.length, 0);
+                return new Node_LiteralBoolean(node.value as boolean);
+            case Compiler.Kind.LiteralInteger:
+                assert.eq(node.children.length, 0);
+                return new Node_LiteralInteger(node.value as number);
+            case Compiler.Kind.LiteralFloat:
+                assert.eq(node.children.length, 0);
+                return new Node_LiteralFloat(node.value as number);
             case Compiler.Kind.LiteralString:
                 assert.eq(node.children.length, 0);
                 return new Node_LiteralString(node.value as string);
+            case Compiler.Kind.ValueOperatorBinary:
+                assert.eq(node.children.length, 2);
+                return new Node_ValueOperatorBinary(this.linkNode(node.children[0]), node.value as string, this.linkNode(node.children[1]));
         }
         assert.fail("Unknown node kind in linkNode: {kind}", {kind:node.kind});
     }

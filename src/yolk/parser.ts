@@ -66,16 +66,16 @@ class Node implements Parser.Node {
         return new Node(Parser.Kind.Module, children);
     }
     static createNullLiteral(): Node {
-        return new Node(Parser.Kind.NullLiteral, []);
+        return new Node(Parser.Kind.LiteralNull, []);
     }
     static createBooleanLiteral(value: boolean): Node {
-        return new Node(Parser.Kind.NullLiteral, [], value);
+        return new Node(Parser.Kind.LiteralNull, [], value);
     }
     static createIntegerLiteral(value: number): Node {
-        return new Node(Parser.Kind.IntegerLiteral, [], value);
+        return new Node(Parser.Kind.LiteralInteger, [], value);
     }
     static createStringLiteral(value: string): Node {
-        return new Node(Parser.Kind.StringLiteral, [], value);
+        return new Node(Parser.Kind.LiteralString, [], value);
     }
     static createIdentifier(name: string): Node {
         return new Node(Parser.Kind.Identifier, [], name);
@@ -86,6 +86,15 @@ class Node implements Parser.Node {
     }
     static createFunctionArguments(nodes: Node[]): Node {
         return new Node(Parser.Kind.FunctionArguments, nodes);
+    }
+    static createOperatorTernary(lhs: Node, mid: Node, rhs: Node, op: string): Node {
+        return new Node(Parser.Kind.OperatorTernary, [lhs, mid, rhs], op);
+    }
+    static createOperatorBinary(lhs: Node, rhs: Node, op: string): Node {
+        return new Node(Parser.Kind.OperatorBinary, [lhs, rhs], op);
+    }
+    static createOperatorUnary(rhs: Node, op: string): Node {
+        return new Node(Parser.Kind.OperatorBinary, [rhs], op);
     }
 }
 
@@ -161,6 +170,63 @@ class Impl extends Logger {
         assert(this.peekPunctuation(lookahead) === ")");
         return this.success(Node.createFunctionArguments(nodes), lookahead + 1);
     }
+    private expectFunctionArgument(lookahead: number): Success {
+        return this.parseExpression(lookahead)
+            ?? this.throwUnexpected("Expected function argument", lookahead);
+    }
+    private parseExpression(lookahead: number): Success | undefined {
+        return this.parseValueExpression(lookahead)
+            ?? this.parseTypeExpression(lookahead);
+    }
+    private parseTypeExpression(lookahead_: number): Success | undefined {
+        return undefined;
+    }
+    private parseValueExpression(lookahead: number): Success | undefined {
+        return this.parseValueExpressionTernary(lookahead);
+    }
+    private parseValueExpressionTernary(lookahead: number): Success | undefined {
+        const lhs = this.parseValueExpressionBinary(lookahead);
+        if (lhs && this.isPunctuation(lhs.lookahead, "?") && !this.isPunctuation(lhs.lookahead, "??")) {
+            const mid = this.parseValueExpression(lhs.lookahead + 1);
+            if (mid && this.isPunctuation(lhs.lookahead, ":")) {
+                const rhs = this.parseValueExpression(mid.lookahead + 1);
+                if (rhs) {
+                    return this.success(Node.createOperatorTernary(lhs.node, mid.node, rhs.node, "?:"), rhs.lookahead);
+                }
+            }
+        }
+        return lhs;
+    }
+    private parseValueExpressionBinary(lookahead: number): Success | undefined {
+        const lhs = this.parseValueExpressionUnary(lookahead);
+        if (lhs) {
+            for (const op of ["+","-","*","/"]) {
+                const expr = this.parseValueExpressionBinaryOperator(lhs, op);
+                if (expr) {
+                    return expr;
+                }
+            }
+        }
+        return lhs;
+    }
+    private parseValueExpressionBinaryOperator(lhs: Success, op: string): Success | undefined {
+        if (this.isPunctuation(lhs.lookahead, op)) {
+            const rhs = this.parseValueExpression(lhs.lookahead + op.length);
+            if (rhs) {
+                return this.success(Node.createOperatorBinary(lhs.node, rhs.node, op), rhs.lookahead);
+            }
+        }
+        return undefined;
+    }
+    private parseValueExpressionUnary(lookahead: number): Success | undefined {
+        return this.parseValueExpressionPrimary(lookahead);
+    }
+    private parseValueExpressionPrimary(lookahead: number): Success | undefined {
+        return this.parseNullLiteral(lookahead)
+            ?? this.parseBooleanLiteral(lookahead)
+            ?? this.parseIntegerLiteral(lookahead)
+            ?? this.parseStringLiteral(lookahead);
+    }
     private parseIdentifier(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Identifier) {
@@ -201,23 +267,11 @@ class Impl extends Logger {
         }
         return undefined;
     }
-    private expectFunctionArgument(lookahead: number): Success {
-        return this.parseNullLiteral(lookahead)
-            ?? this.parseBooleanLiteral(lookahead)
-            ?? this.parseIntegerLiteral(lookahead)
-            ?? this.parseStringLiteral(lookahead)
-            ?? this.throwUnexpected("Expected function argument", lookahead); // TODO
-    }
     private expectSemicolon(success: Success): Success {
         if (this.peekPunctuation(success.lookahead) === ";") {
             return new Success(success.node, success.lookahead + 1);
         }
         this.throwUnexpected("Expected semicolon", success.lookahead, ";");
-    }
-    private expectPunctuation(lookahead: number, expected: string): void {
-        if (this.peekPunctuation(lookahead) !== expected) {
-            this.throwUnexpected("Expected '{expected}'", lookahead, expected);
-        }
     }
     private peekKeyword(lookahead: number): string {
         const token = this.input.peek(lookahead);
@@ -226,6 +280,19 @@ class Impl extends Logger {
     private peekPunctuation(lookahead: number): string {
         const token = this.input.peek(lookahead);
         return token.kind === Tokenizer.Kind.Punctuation ? String(token.value) : "";
+    }
+    private isPunctuation(lookahead: number, punctuation: string): boolean {
+        let token = this.input.peek(lookahead);
+        if (token.kind !== Tokenizer.Kind.Punctuation || token.value !== punctuation[0]) {
+            return false;
+        }
+        for (let index = 1; index < punctuation.length; ++index) {
+            token = this.input.peek(lookahead + index);
+            if (token.kind !== Tokenizer.Kind.Punctuation || token.previous !== Tokenizer.Kind.Punctuation || token.value !== punctuation[index]) {
+                return false;
+            }
+        }
+        return true;
     }
     private throwUnexpected(message: string, lookahead: number, expected?: string): never {
         this.throw(this.unexpected(message, lookahead, expected));
@@ -303,12 +370,16 @@ export namespace Parser {
     export enum Kind {
         Module = "module",
         Identifier = "identifier",
-        NullLiteral = "null-literal",
-        BooleanLiteral = "boolean-literal",
-        IntegerLiteral = "integer-literal",
-        StringLiteral = "string-literal",
+        LiteralNull = "literal-null",
+        LiteralBoolean = "literal-boolean",
+        LiteralInteger = "literal-integer",
+        LiteralFloat = "literal-float",
+        LiteralString = "literal-string",
         FunctionCall = "function-call",
         FunctionArguments = "function-arguments",
+        OperatorTernary = "operator-ternary",
+        OperatorBinary = "operator-binary",
+        OperatorUnary = "operator-unary",
     }
     export interface Node {
         kind: Kind;
