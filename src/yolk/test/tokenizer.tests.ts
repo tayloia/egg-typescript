@@ -66,11 +66,12 @@ describe("Tokenizer", function() {
             ["0", 0],
             ["123", 123],
             ["1234567890", 1234567890],
+            ["0123", 123],
         ];
         cases.forEach(([input, expected]) => it(`should accept integer "${input}"`, function() {
             const token = tokenizeOne(input);
             expect(token.kind).equals(Tokenizer.Kind.Integer);
-            expect(token.value).equals(expected);
+            expect(token.value).equals(BigInt(expected));
         }));
         it("should reject bad integers", function() {
             expect(tokenizeBad("1e6")).throws("(1,2): Invalid character in number literal: 'e'");

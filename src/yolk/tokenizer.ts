@@ -100,7 +100,7 @@ export class Tokenizer {
     take(): Tokenizer.Token {
         const line = this.line;
         const column = this.column;
-        const success = (kind: Tokenizer.Kind, raw: string, value: number | string) => {
+        const success = (kind: Tokenizer.Kind, raw: string, value: bigint | number | string) => {
             return new Tokenizer.Token(kind, raw, value, line, column);
         }
         const fail = (message: string) => {
@@ -217,7 +217,7 @@ export class Tokenizer {
                 // No decimal point
                 const output = this.pop(count);
                 this.column += count;
-                return success(Tokenizer.Kind.Integer, output, Number(output));
+                return success(Tokenizer.Kind.Integer, output, BigInt(output));
             }
             next = this.peek(++count);
             while (isDigit(next)) {
@@ -387,7 +387,7 @@ export namespace Tokenizer {
         constructor(
             public readonly kind: Kind,
             public readonly raw: string,
-            public readonly value: string | number,
+            public readonly value: bigint | number | string,
             public readonly line: number,
             public readonly column: number,
         ) {}

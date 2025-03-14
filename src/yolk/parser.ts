@@ -2,6 +2,7 @@ import { assert } from "./assertion";
 import { BaseException, ExceptionParameters } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
 import { Tokenizer } from "./tokenizer";
+import { Value } from "./value";
 
 class Token {
     constructor(public underlying: Tokenizer.Token, public previous: Tokenizer.Kind) {}
@@ -61,24 +62,15 @@ class Input {
 }
 
 class Node implements Parser.Node {
-    private constructor(public kind: Parser.Kind, public children: Node[] = [], public value?: boolean | number | string) {}
+    private constructor(public kind: Parser.Kind, public children: Node[] = [], public value: Value = Value.VOID) {}
     static createModule(children: Node[]): Node {
         return new Node(Parser.Kind.Module, children);
     }
-    static createNullLiteral(): Node {
-        return new Node(Parser.Kind.LiteralNull, []);
-    }
-    static createBooleanLiteral(value: boolean): Node {
-        return new Node(Parser.Kind.LiteralNull, [], value);
-    }
-    static createIntegerLiteral(value: number): Node {
-        return new Node(Parser.Kind.LiteralInteger, [], value);
-    }
-    static createStringLiteral(value: string): Node {
-        return new Node(Parser.Kind.LiteralString, [], value);
-    }
     static createIdentifier(name: string): Node {
-        return new Node(Parser.Kind.Identifier, [], name);
+        return new Node(Parser.Kind.Identifier, [], Value.fromString(name));
+    }
+    static createLiteral(value: Value): Node {
+        return new Node(Parser.Kind.Literal, [], value);
     }
     static createFunctionCall(callee: Node, fnargs: Node): Node {
         assert.eq(fnargs.kind, Parser.Kind.FunctionArguments);
@@ -88,13 +80,13 @@ class Node implements Parser.Node {
         return new Node(Parser.Kind.FunctionArguments, nodes);
     }
     static createOperatorTernary(lhs: Node, mid: Node, rhs: Node, op: string): Node {
-        return new Node(Parser.Kind.OperatorTernary, [lhs, mid, rhs], op);
+        return new Node(Parser.Kind.OperatorTernary, [lhs, mid, rhs], Value.fromString(op));
     }
     static createOperatorBinary(lhs: Node, rhs: Node, op: string): Node {
-        return new Node(Parser.Kind.OperatorBinary, [lhs, rhs], op);
+        return new Node(Parser.Kind.OperatorBinary, [lhs, rhs], Value.fromString(op));
     }
     static createOperatorUnary(rhs: Node, op: string): Node {
-        return new Node(Parser.Kind.OperatorBinary, [rhs], op);
+        return new Node(Parser.Kind.OperatorBinary, [rhs], Value.fromString(op));
     }
 }
 
@@ -237,7 +229,7 @@ class Impl extends Logger {
     }
     private parseNullLiteral(lookahead: number): Success | undefined {
         if (this.peekKeyword(lookahead) === "null") {
-            const node = Node.createNullLiteral();
+            const node = Node.createLiteral(Value.NULL);
             return this.success(node, lookahead + 1);
         }
         return undefined;
@@ -245,16 +237,16 @@ class Impl extends Logger {
     private parseBooleanLiteral(lookahead: number): Success | undefined {
         switch (this.peekKeyword(lookahead)) {
             case "false":
-                return this.success(Node.createBooleanLiteral(false), lookahead + 1);
+                return this.success(Node.createLiteral(Value.FALSE), lookahead + 1);
             case "true":
-                return this.success(Node.createBooleanLiteral(true), lookahead + 1);
+                return this.success(Node.createLiteral(Value.TRUE), lookahead + 1);
             }
         return undefined;
     }
     private parseIntegerLiteral(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Integer) {
-            const node = Node.createIntegerLiteral(token.value as number);
+            const node = Node.createLiteral(Value.fromInt(token.value as bigint));
             return this.success(node, lookahead + 1);
         }
         return undefined;
@@ -262,7 +254,7 @@ class Impl extends Logger {
     private parseStringLiteral(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.String) {
-            const node = Node.createStringLiteral(token.value as string);
+            const node = Node.createLiteral(Value.fromString(token.value as string));
             return this.success(node, lookahead + 1);
         }
         return undefined;
@@ -370,11 +362,7 @@ export namespace Parser {
     export enum Kind {
         Module = "module",
         Identifier = "identifier",
-        LiteralNull = "literal-null",
-        LiteralBoolean = "literal-boolean",
-        LiteralInteger = "literal-integer",
-        LiteralFloat = "literal-float",
-        LiteralString = "literal-string",
+        Literal = "literal",
         FunctionCall = "function-call",
         FunctionArguments = "function-arguments",
         OperatorTernary = "operator-ternary",
@@ -384,6 +372,6 @@ export namespace Parser {
     export interface Node {
         kind: Kind;
         children: Node[];
-        value?: string | number | boolean;
+        value: Value;
     }
 }

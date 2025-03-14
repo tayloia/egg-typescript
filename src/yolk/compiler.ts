@@ -2,9 +2,10 @@ import { assert } from "./assertion";
 import { BaseException, ExceptionParameters } from "./exception";
 import { Logger } from "./logger";
 import { Parser } from "./parser";
+import { Value } from "./value";
 
 class Node implements Compiler.Node {
-    constructor(public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: string | number | boolean | undefined = undefined) {}
+    constructor(public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: Value = Value.VOID) {}
 }
 
 class Module implements Compiler.Module {
@@ -32,24 +33,18 @@ class Impl extends Logger {
     compileExpr(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
-                return new Node(Compiler.Kind.LiteralIdentifier, [], pnode.value);
-            case Parser.Kind.LiteralBoolean:
-                return new Node(Compiler.Kind.LiteralBoolean, [], pnode.value);
-            case Parser.Kind.LiteralInteger:
-                return new Node(Compiler.Kind.LiteralInteger, [], pnode.value);
-            case Parser.Kind.LiteralFloat:
-                return new Node(Compiler.Kind.LiteralFloat, [], pnode.value);
-            case Parser.Kind.LiteralString:
-                return new Node(Compiler.Kind.LiteralString, [], pnode.value);
+                return new Node(Compiler.Kind.Identifier, [], pnode.value);
+            case Parser.Kind.Literal:
+                return new Node(Compiler.Kind.ValueLiteral, [], pnode.value);
             case Parser.Kind.OperatorBinary:
-                return this.compileExprBinary(pnode.children[0], pnode.value as string, pnode.children[1]);
+                return this.compileExprBinary(pnode.children[0], pnode.value.getString(), pnode.children[1]);
             case undefined:
                 break;
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
     compileExprBinary(plhs: Parser.Node, op: string, prhs: Parser.Node): Node {
-        return new Node(Compiler.Kind.ValueOperatorBinary, [this.compileExpr(plhs), this.compileExpr(prhs)], op);
+        return new Node(Compiler.Kind.ValueOperatorBinary, [this.compileExpr(plhs), this.compileExpr(prhs)], Value.fromString(op));
     }
     compileExprArguments(pnode: Parser.Node): Node[] {
         assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
@@ -92,17 +87,14 @@ export namespace Compiler {
     export enum Kind {
         Module = "module",
         StmtCall = "stmt-call",
-        LiteralIdentifier = "literal-identifier",
-        LiteralBoolean = "literal-boolean",
-        LiteralInteger = "literal-integer",
-        LiteralFloat = "literal-float",
-        LiteralString = "literal-string",
+        Identifier = "identifier",
+        ValueLiteral = "value-literal",
         ValueOperatorBinary = "value-operator-binary",
     }
     export interface Node {
         kind: Kind;
         children: Node[];
-        value: string | number | boolean | undefined;
+        value: Value;
     }
     export interface Module {
         root: Node;
