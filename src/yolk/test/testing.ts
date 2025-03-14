@@ -4,7 +4,7 @@ import { Compiler } from "../compiler";
 import { Linker } from "../linker";
 import { Logger } from "../logger";
 import { Parser } from "../parser";
-import { Module, Program } from "../program";
+import { Program } from "../program";
 import { AssertionError } from "assertion-error";
 import { assert } from "../assertion";
 
@@ -56,7 +56,7 @@ export class TestProgram extends TestLogger {
     parse(): Parser.Node {
         return Parser.fromString(this.input, this.source).withLogger(this).parse();
     }
-    compile(): Module {
+    compile(): Compiler.Module {
         return Compiler.fromString(this.input, this.source).withLogger(this).compile();
     }
     link(): Program {

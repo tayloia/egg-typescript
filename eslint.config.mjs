@@ -8,13 +8,19 @@ export default tseslint.config(
   tseslint.configs.recommended,
   {
     rules: {
-      "@typescript-eslint/no-namespace": "off"
+      "@typescript-eslint/no-namespace": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          "argsIgnorePattern": "_$",
+        }
+      ]
     }
   },
   {
     files: ["**/*.tests.ts"],
     rules: {
-        "@typescript-eslint/no-unused-expressions": "off"
+      "@typescript-eslint/no-unused-expressions": "off"
     }
   },
 );

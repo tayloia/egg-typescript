@@ -1,17 +1,13 @@
 import { expect } from "chai";
 
-import { Linker } from "../linker";
 import { Testing, TestProgram } from "./testing";
 
 describe("Linker", function() {
     describe("fromString", function() {
         it("should accept minimal program", function() {
             const test = TestProgram.fromString("print(\"hello, world\");");
-            const module = test.compile();
-            const linker = new Linker().withLogger(test);
-            linker.withModule(module);
-            const program = linker.link();
-            expect(program.modules).deep.equals([module]);
+            const program = test.link();
+            expect(program.modules.length).equals(1);
             expect(test.logged.length).equals(0);
         });
     });

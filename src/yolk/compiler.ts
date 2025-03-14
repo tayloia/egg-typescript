@@ -2,17 +2,13 @@ import { assert } from "./assertion";
 import { BaseException, ExceptionParameters } from "./exception";
 import { Logger } from "./logger";
 import { Parser } from "./parser";
-import { Module } from "./program";
-
-enum Kind {
-    Module = "module",
-    StmtCall = "stmt-call",
-    LiteralIdentifier = "literal-identifier",
-    LiteralString = "literal-string",
-}
 
 class Node implements Compiler.Node {
-    constructor(public readonly kind: Kind, public readonly children: Node[] = [], public readonly value?: string | number | boolean) {}
+    constructor(public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: string | number | boolean | undefined = undefined) {}
+}
+
+class Module implements Compiler.Module {
+    constructor(public readonly root: Node, public readonly source: string) {}
 }
 
 class Impl extends Logger {
@@ -21,13 +17,13 @@ class Impl extends Logger {
     }
     compileModule(): Module {
         const statements = this.input.children.map(child => this.compileModuleStatement(child));
-        const root = new Node(Kind.Module, statements);
+        const root = new Node(Compiler.Kind.Module, statements);
         return new Module(root, this.source);
     }
     compileModuleStatement(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.FunctionCall:
-                return new Node(Kind.StmtCall, [this.compileExpr(pnode.children[0]), ...this.compileExprArguments(pnode.children[1])])
+                return new Node(Compiler.Kind.StmtCall, [this.compileExpr(pnode.children[0]), ...this.compileExprArguments(pnode.children[1])])
             case undefined:
                 break;
         }
@@ -36,9 +32,9 @@ class Impl extends Logger {
     compileExpr(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
-                return new Node(Kind.LiteralIdentifier, [], pnode.value);
+                return new Node(Compiler.Kind.LiteralIdentifier, [], pnode.value);
             case Parser.Kind.StringLiteral:
-                return new Node(Kind.LiteralString, [], pnode.value);
+                return new Node(Compiler.Kind.LiteralString, [], pnode.value);
             case undefined:
                 break;
         }
@@ -82,7 +78,19 @@ export namespace Compiler {
             super("CompilerException", message, parameters);
         }
     }
+    export enum Kind {
+        Module = "module",
+        StmtCall = "stmt-call",
+        LiteralIdentifier = "literal-identifier",
+        LiteralString = "literal-string",
+    }
     export interface Node {
+        kind: Kind;
         children: Node[];
+        value: string | number | boolean | undefined;
+    }
+    export interface Module {
+        root: Node;
+        source: string;
     }
 }
