@@ -2,7 +2,7 @@ import { assert } from "./assertion";
 import { Type } from "./type";
 import { Value } from "./value";
 
-class SymbolTableEntry {
+export class SymbolTableEntry {
     constructor(public name: string, public type: Type, public value: Value) {}
 }
 
@@ -29,27 +29,15 @@ export class SymbolTable {
         assert(!this.frame.has(key), "Key already extant in symbol table (declare): '{key}'", {key});
         this.frame.set(key, new SymbolTableEntry(key, type, Value.VOID));
     }
-    get(key: string): Value {
+    find(key: string): SymbolTableEntry | undefined {
         let frame: SymbolTableFrame | undefined = this.frame;
         while (frame) {
             const entry = frame.get(key);
             if (entry) {
-                return entry.value;
+                return entry;
             }
             frame = frame.chain;
         }
-        assert.fail("Key not found in symbol table (get): '{key}'", {key});
-    }
-    set(key: string, value: Value): void {
-        let frame: SymbolTableFrame | undefined = this.frame;
-        while (frame) {
-            const entry = frame.get(key);
-            if (entry) {
-                entry.value = value;
-                return;
-            }
-            frame = frame.chain;
-        }
-        assert.fail("Key not found in symbol table (set): '{key}'", {key});
+        return undefined;
     }
 }

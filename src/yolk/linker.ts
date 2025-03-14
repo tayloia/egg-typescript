@@ -34,6 +34,7 @@ function evaluateBinaryOperator(lhs: Value, op: string, rhs: Value): Value {
 
 abstract class Node implements Program.Node {
     abstract evaluate(runner: Program.Runner): Value;
+    abstract entype(runner: Program.Runner): Type;
     abstract execute(runner: Program.Runner): void;
 }
 
@@ -42,6 +43,9 @@ class Node_Module extends Node {
         super();
     }
     evaluate(runner: Program.Runner): Value {
+        runner.unimplemented();
+    }
+    entype(runner: Program.Runner): Type {
         runner.unimplemented();
     }
     execute(runner: Program.Runner): void {
@@ -58,8 +62,11 @@ class Node_StmtVariableDefine extends Node {
     evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
     }
+    entype(runner: Program.Runner): Type {
+        runner.unimplemented();
+    }
     execute(runner: Program.Runner): void {
-        runner.variableDefine(this.name, Type.UNKNOWN, this.initializer.evaluate(runner));
+        runner.variableDefine(this.name, this.type.entype(runner), this.initializer.evaluate(runner));
     }
 }
 
@@ -68,6 +75,9 @@ class Node_StmtCall extends Node {
         super();
     }
     evaluate(runner: Program.Runner): Value {
+        runner.unimplemented();
+    }
+    entype(runner: Program.Runner): Type {
         runner.unimplemented();
     }
     execute(runner: Program.Runner): void {
@@ -83,17 +93,23 @@ class Node_LiteralIdentifier extends Node {
     evaluate(runner: Program.Runner): Value {
         return runner.variableGet(this.identifier);
     }
+    entype(runner: Program.Runner): Type {
+        runner.unimplemented();
+    }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
     }
 }
 
 class Node_TypeLiteral extends Node {
-    constructor(public value: Value) {
+    constructor(public type: Type) {
         super();
     }
     evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
+    }
+    entype(runner_: Program.Runner): Type {
+        return this.type;
     }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
@@ -107,6 +123,9 @@ class Node_ValueLiteral extends Node {
     evaluate(runner_: Program.Runner): Value {
         return this.value;
     }
+    entype(runner: Program.Runner): Type {
+        runner.unimplemented();
+    }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
     }
@@ -118,6 +137,9 @@ class Node_ValueOperatorBinary extends Node {
     }
     evaluate(runner: Program.Runner): Value {
         return evaluateBinaryOperator(this.lhs.evaluate(runner), this.op, this.rhs.evaluate(runner));
+    }
+    entype(runner: Program.Runner): Type {
+        runner.unimplemented();
     }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
@@ -154,7 +176,20 @@ class Impl extends Logger {
                 return new Node_LiteralIdentifier(node.value.getString());
             case Compiler.Kind.TypeKeyword:
                 assert.eq(node.children.length, 0);
-                return new Node_TypeLiteral(node.value);
+                switch (node.value.getString()) {
+                    case "void":
+                        return new Node_TypeLiteral(Type.VOID);
+                    case "bool":
+                        return new Node_TypeLiteral(Type.BOOL);
+                    case "int":
+                        return new Node_TypeLiteral(Type.INT);
+                    case "float":
+                        return new Node_TypeLiteral(Type.FLOAT);
+                    case "string":
+                        return new Node_TypeLiteral(Type.STRING);
+                }
+                assert.fail("Unknown keyword for Compiler.Kind.TypeKeywordnode in linkNode: {keyword}", {keyword:node.value.getString()});
+                break;
             case Compiler.Kind.ValueLiteral:
                 assert.eq(node.children.length, 0);
                 return new Node_ValueLiteral(node.value);

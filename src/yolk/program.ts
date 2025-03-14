@@ -1,4 +1,5 @@
 import { assert } from "./assertion";
+import { Exception } from "./exception";
 import { Logger } from "./logger";
 import { SymbolTable } from "./symboltable";
 import { Type } from "./type";
@@ -46,13 +47,29 @@ class Runner extends Program.Runner {
         this.variables.declare(name, type);
     }
     variableDefine(name: string, type: Type, initializer: Value): void {
-        this.variables.define(name, type, initializer);
+        const compatible = type.compatible(initializer);
+        if (compatible === undefined) {
+            throw new Exception("Cannot initialize value of type '{type}' to variable '{name}'", {name, type:type.describe()});
+        }
+        this.variables.define(name, type, compatible);
     }
     variableSet(name: string, value: Value): void {
-        this.variables.set(name, value);
+        const entry = this.variables.find(name);
+        if (entry === undefined) {
+            throw new Exception("Variable not found in symbol table (set): '{name}'", {name});
+        }
+        const compatible = entry.type.compatible(value);
+        if (compatible === undefined) {
+            throw new Exception("Cannot assign value of type '{type}' to variable '{name}'", {name, type:entry.type.describe()});
+        }
+        entry.value = compatible;
     }
     variableGet(name: string): Value {
-        return this.variables.get(name);
+        const entry = this.variables.find(name);
+        if (!entry) {
+            throw new Exception("Variable not found in symbol table (get): '{name}'", {name});
+        }
+        return entry.value;
     }
     unimplemented(): never {
         assert.fail("Unimplemented: {caller}", {caller:this.unimplemented});
