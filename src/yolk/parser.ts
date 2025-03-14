@@ -72,6 +72,15 @@ class Node implements Parser.Node {
     static createLiteral(value: Value): Node {
         return new Node(Parser.Kind.Literal, [], value);
     }
+    static createTypeKeyword(keyword: string): Node {
+        return new Node(Parser.Kind.TypeKeyword, [], Value.fromString(keyword));
+    }
+    static createVariableDefinition(name: string, type: Node, initializer: Node): Node {
+        return new Node(Parser.Kind.Variable, [type, initializer], Value.fromString(name));
+    }
+    static createVariableDeclaration(name: string, type: Node, initializer: Node): Node {
+        return new Node(Parser.Kind.Variable, [type, initializer], Value.fromString(name));
+    }
     static createFunctionCall(callee: Node, fnargs: Node): Node {
         assert.eq(fnargs.kind, Parser.Kind.FunctionArguments);
         return new Node(Parser.Kind.FunctionCall, [callee, fnargs]);
@@ -123,19 +132,40 @@ class Impl extends Logger {
         return Node.createModule(children);
     }
     private expectModuleStatement(): Node {
-        let success;
-        if ((success = this.parseFunctionCall(0))) {
-            success = this.expectSemicolon(success);
-            return this.commit(success);
+        const statement = this.parseStatement(0);
+        if (statement) {
+            return this.commit(statement);
         };
         this.throwUnexpected("Expected module statement", 0);
+    }
+    private parseStatement(lookahead: number): Success | undefined {
+        const success = this.parseStatementSimple(lookahead);
+        return success && this.expectSemicolon(success);
+    }
+    private parseStatementSimple(lookahead: number): Success | undefined {
+        // Excluding the trailing semicolon
+        return this.parseVariableDefinition(lookahead)
+            ?? this.parseFunctionCall(lookahead);
+    }
+    private parseVariableDefinition(lookahead: number): Success | undefined {
+        const type = this.parseTypeExpression(lookahead);
+        if (type) {
+            const identifier = this.parseIdentifier(type.lookahead);
+            if (identifier && this.isPunctuation(identifier.lookahead, "=")) {
+                const initializer = this.parseValueExpression(identifier.lookahead + 1);
+                if (initializer) {
+                    return this.success(Node.createVariableDefinition(identifier.node.value.getString(), type.node, initializer.node), initializer.lookahead);
+                }
+            }
+        }
+        return undefined;
     }
     private parseFunctionCall(lookahead: number): Success | undefined {
         let callee;
         if ((callee = this.parseIdentifier(lookahead))) {
             if (this.peekPunctuation(callee.lookahead) === "(") {
                 const fnargs = this.expectFunctionArguments(callee.lookahead);
-                return new Success(Node.createFunctionCall(callee.node, fnargs.node), fnargs.lookahead);
+                return this.success(Node.createFunctionCall(callee.node, fnargs.node), fnargs.lookahead);
             }
         }
         return undefined;
@@ -170,7 +200,18 @@ class Impl extends Logger {
         return this.parseValueExpression(lookahead)
             ?? this.parseTypeExpression(lookahead);
     }
-    private parseTypeExpression(lookahead_: number): Success | undefined {
+    private parseTypeExpression(lookahead: number): Success | undefined {
+        return this.parseTypeKeyword(lookahead);
+    }
+    private parseTypeKeyword(lookahead: number): Success | undefined {
+        const keyword = this.peekKeyword(lookahead);
+        switch (keyword) {
+            case "bool":
+            case "int":
+            case "float":
+            case "string":
+                return this.success(Node.createTypeKeyword(keyword), lookahead + 1);
+        }
         return undefined;
     }
     private parseValueExpression(lookahead: number): Success | undefined {
@@ -218,7 +259,8 @@ class Impl extends Logger {
             ?? this.parseBooleanLiteral(lookahead)
             ?? this.parseIntegerLiteral(lookahead)
             ?? this.parseFloatLiteral(lookahead)
-            ?? this.parseStringLiteral(lookahead);
+            ?? this.parseStringLiteral(lookahead)
+            ?? this.parseIdentifier(lookahead);
     }
     private parseIdentifier(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
@@ -270,7 +312,7 @@ class Impl extends Logger {
     }
     private expectSemicolon(success: Success): Success {
         if (this.peekPunctuation(success.lookahead) === ";") {
-            return new Success(success.node, success.lookahead + 1);
+            return this.success(success.node, success.lookahead + 1);
         }
         this.throwUnexpected("Expected semicolon", success.lookahead, ";");
     }
@@ -372,6 +414,8 @@ export namespace Parser {
         Module = "module",
         Identifier = "identifier",
         Literal = "literal",
+        Variable = "variable",
+        TypeKeyword = "type-keyword",
         FunctionCall = "function-call",
         FunctionArguments = "function-arguments",
         OperatorTernary = "operator-ternary",

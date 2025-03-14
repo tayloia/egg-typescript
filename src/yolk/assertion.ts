@@ -20,7 +20,7 @@ export class AssertionException extends BaseException {
     }
 }
 
-export function assert(predicate: boolean, message?: string, parameters?: ExceptionParameters): void {
+export function assert(predicate: boolean, message?: string, parameters?: ExceptionParameters) : asserts predicate is true {
     if (predicate) {
         assert.pass();
     } else {
@@ -67,4 +67,16 @@ assert.gt = function(lhs: number, rhs: number): void {
 
 assert.ge = function(lhs: number, rhs: number): void {
     assert.binop(lhs >= rhs, lhs, rhs, ">=", assert.ge);
+}
+
+assert.falsey = function(value: unknown, message?: string, parameters?: ExceptionParameters): asserts value is undefined | null | false {
+    if (value) {
+        assert.fail(message ?? `Assertion failure: value not falsey: ${JSON.stringify(value)}`, {value,...parameters,caller:assert.truthy});
+    }
+}
+
+assert.truthy = function(value: unknown, message?: string, parameters?: ExceptionParameters): asserts value {
+    if (!value) {
+        assert.fail(message ?? `Assertion failure: value not truthy: ${JSON.stringify(value)}`, {value,...parameters,caller:assert.truthy});
+    }
 }

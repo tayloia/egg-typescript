@@ -25,10 +25,26 @@ class Impl extends Logger {
         switch (pnode.kind) {
             case Parser.Kind.FunctionCall:
                 return new Node(Compiler.Kind.StmtCall, [this.compileExpr(pnode.children[0]), ...this.compileExprArguments(pnode.children[1])])
+            case Parser.Kind.Variable:
+                switch (pnode.children.length) {
+                    case 1:
+                        return new Node(Compiler.Kind.StmtVariableDeclare, [this.compileType(pnode.children[0])], pnode.value)
+                    case 2:
+                        return new Node(Compiler.Kind.StmtVariableDefine, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
+                }
+                assert.fail("Invalid number of children for Parser.Kind.Variable: {length}", {length:pnode.children.length});
+        }
+        assert.fail("Unknown node kind in compileModuleStatement: {kind}", {kind:pnode.kind});
+    }
+    compileType(pnode: Parser.Node): Node {
+        switch (pnode.kind) {
+            case Parser.Kind.TypeKeyword:
+                assert.eq(pnode.children.length, 0);
+                return new Node(Compiler.Kind.TypeKeyword, [], pnode.value);
             case undefined:
                 break;
         }
-        assert.fail("Unknown node kind in compileModuleStatement: {kind}", {kind:pnode.kind});
+        assert.fail("Unknown node kind in compileType: {kind}", {kind:pnode.kind});
     }
     compileExpr(pnode: Parser.Node): Node {
         switch (pnode.kind) {
@@ -38,8 +54,6 @@ class Impl extends Logger {
                 return new Node(Compiler.Kind.ValueLiteral, [], pnode.value);
             case Parser.Kind.OperatorBinary:
                 return this.compileExprBinary(pnode.children[0], pnode.value.getString(), pnode.children[1]);
-            case undefined:
-                break;
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
@@ -87,7 +101,10 @@ export namespace Compiler {
     export enum Kind {
         Module = "module",
         StmtCall = "stmt-call",
+        StmtVariableDeclare = "stmt-variable-declare",
+        StmtVariableDefine = "stmt-variable-define",
         Identifier = "identifier",
+        TypeKeyword = "type-keyword",
         ValueLiteral = "value-literal",
         ValueOperatorBinary = "value-operator-binary",
     }

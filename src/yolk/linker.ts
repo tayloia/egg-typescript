@@ -3,6 +3,7 @@ import { Compiler } from "./compiler";
 import { BaseException, ExceptionParameters } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
 import { Program } from "./program";
+import { Type } from "./type";
 import { Value } from "./value";
 
 function evaluateBinaryOperator(lhs: Value, op: string, rhs: Value): Value {
@@ -50,6 +51,18 @@ class Node_Module extends Node {
     }
 }
 
+class Node_StmtVariableDefine extends Node {
+    constructor(public name: string, public type: Node, public initializer: Node) {
+        super();
+    }
+    evaluate(runner: Program.Runner): Value {
+        runner.unimplemented();
+    }
+    execute(runner: Program.Runner): void {
+        runner.variableDefine(this.name, Type.UNKNOWN, this.initializer.evaluate(runner));
+    }
+}
+
 class Node_StmtCall extends Node {
     constructor(public children: Node[]) {
         super();
@@ -65,6 +78,18 @@ class Node_StmtCall extends Node {
 
 class Node_LiteralIdentifier extends Node {
     constructor(public identifier: string) {
+        super();
+    }
+    evaluate(runner: Program.Runner): Value {
+        return runner.variableGet(this.identifier);
+    }
+    execute(runner: Program.Runner): void {
+        runner.unimplemented();
+    }
+}
+
+class Node_TypeLiteral extends Node {
+    constructor(public value: Value) {
         super();
     }
     evaluate(runner: Program.Runner): Value {
@@ -118,12 +143,18 @@ class Impl extends Logger {
         switch (node.kind) {
             case Compiler.Kind.Module:
                 return new Node_Module(this.linkNodes(node.children));
+            case Compiler.Kind.StmtVariableDefine:
+                assert.eq(node.children.length, 2);
+                return new Node_StmtVariableDefine(node.value.getString(), this.linkNode(node.children[0]), this.linkNode(node.children[1]));
             case Compiler.Kind.StmtCall:
                 assert.ge(node.children.length, 1);
                 return new Node_StmtCall(this.linkNodes(node.children));
             case Compiler.Kind.Identifier:
                 assert.eq(node.children.length, 0);
                 return new Node_LiteralIdentifier(node.value.getString());
+            case Compiler.Kind.TypeKeyword:
+                assert.eq(node.children.length, 0);
+                return new Node_TypeLiteral(node.value);
             case Compiler.Kind.ValueLiteral:
                 assert.eq(node.children.length, 0);
                 return new Node_ValueLiteral(node.value);
