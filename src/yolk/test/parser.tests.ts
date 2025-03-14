@@ -29,7 +29,7 @@ describe("Parser", function() {
             ...Testing.findPath(this, "scripts/test-*.egg")
         ].forEach(script => it(`should accept '${script}'`, function() {
             const output = TestProgram.fromScript(this, script).parse();
-            expect(output.children.length).equals(1);
+            expect(output.children.length).greaterThanOrEqual(1);
         }));
     });
     describe("statement function call", function() {

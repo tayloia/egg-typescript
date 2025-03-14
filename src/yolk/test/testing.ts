@@ -103,8 +103,9 @@ export class TestProgram extends TestLogger {
         for (const match of matches) {
             ++line;
             const expected = makeExpected(match[1]);
-            if (expected) {
+            if (expected !== undefined) {
                 const actual = makeActual(logged++);
+                console.log(actual);
                 if (actual === undefined) {
                     Testing.fail(`Missing script output: '${expected}'`, actual, expected, makeStack(line));
                 }
@@ -115,6 +116,7 @@ export class TestProgram extends TestLogger {
         }
         if (logged !== this.logged.length) {
             const actual = makeActual(logged++);
+            console.log(actual);
             Testing.fail(`Extraneous script output: '${actual}'`, actual, undefined, makeStack(line));
         }
     }
