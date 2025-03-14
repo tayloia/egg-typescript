@@ -5,34 +5,35 @@ import { ConsoleLogger, Logger } from "./logger";
 import { Program } from "./program";
 import { Value } from "./value";
 
+function evaluateBinaryOperator(lhs: Value, op: string, rhs: Value): Value {
+    switch (op) {
+        case "+":
+            if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
+                return Value.fromFloat(lhs.asFloat() + rhs.asFloat());
+            }
+            return Value.fromInt(lhs.getInt() + rhs.getInt());
+        case "-":
+            if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
+                return Value.fromFloat(lhs.asFloat() - rhs.asFloat());
+            }
+            return Value.fromInt(lhs.getInt() - rhs.getInt());
+        case "*":
+            if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
+                return Value.fromFloat(lhs.asFloat() * rhs.asFloat());
+            }
+            return Value.fromInt(lhs.getInt() * rhs.getInt());
+        case "/":
+            if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
+                return Value.fromFloat(lhs.asFloat() / rhs.asFloat());
+            }
+            return Value.fromInt(lhs.getInt() / rhs.getInt());
+    }
+    assert.fail("Unknown binary operator: '{op}'", {op, caller:evaluateBinaryOperator});
+}
+
 abstract class Node implements Program.Node {
     abstract evaluate(runner: Program.Runner): Value;
     abstract execute(runner: Program.Runner): void;
-    evaluateBinaryOperator(lhs: Value, op: string, rhs: Value): Value {
-        switch (op) {
-            case "+":
-                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.asFloat() + rhs.asFloat());
-                }
-                return Value.fromInt(lhs.getInt() + rhs.getInt());
-            case "-":
-                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.asFloat() - rhs.asFloat());
-                }
-                return Value.fromInt(lhs.getInt() - rhs.getInt());
-            case "*":
-                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.asFloat() * rhs.asFloat());
-                }
-                return Value.fromInt(lhs.getInt() * rhs.getInt());
-            case "/":
-                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.asFloat() / rhs.asFloat());
-                }
-                return Value.fromInt(lhs.getInt() / rhs.getInt());
-        }
-        assert.fail("Unknown binary operator: '{op}'", {op,caller:this.evaluateBinaryOperator});
-    }
 }
 
 class Node_Module extends Node {
@@ -50,15 +51,15 @@ class Node_Module extends Node {
 }
 
 class Node_StmtCall extends Node {
-    constructor(public callee: Node, public args: Node) {
+    constructor(public children: Node[]) {
         super();
     }
     evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
     }
     execute(runner: Program.Runner): void {
-        const value = this.args.evaluate(runner);
-        runner.print(value.toString()); // TODO
+        const text = this.children.slice(1).map(child => child.evaluate(runner).toString()).join("");
+        runner.print(text);
     }
 }
 
@@ -91,7 +92,7 @@ class Node_ValueOperatorBinary extends Node {
         super();
     }
     evaluate(runner: Program.Runner): Value {
-        return this.evaluateBinaryOperator(this.lhs.evaluate(runner), this.op, this.rhs.evaluate(runner));
+        return evaluateBinaryOperator(this.lhs.evaluate(runner), this.op, this.rhs.evaluate(runner));
     }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
@@ -118,8 +119,8 @@ class Impl extends Logger {
             case Compiler.Kind.Module:
                 return new Node_Module(this.linkNodes(node.children));
             case Compiler.Kind.StmtCall:
-                assert.eq(node.children.length, 2);
-                return new Node_StmtCall(this.linkNode(node.children[0]), this.linkNode(node.children[1]));
+                assert.ge(node.children.length, 1);
+                return new Node_StmtCall(this.linkNodes(node.children));
             case Compiler.Kind.Identifier:
                 assert.eq(node.children.length, 0);
                 return new Node_LiteralIdentifier(node.value.getString());

@@ -52,3 +52,19 @@ assert.eq = function(lhs: unknown, rhs: unknown): void {
 assert.ne = function(lhs: unknown, rhs: unknown): void {
     assert.binop(lhs !== rhs, lhs, rhs, "!==", assert.ne);
 }
+
+assert.lt = function(lhs: number, rhs: number): void {
+    assert.binop(lhs < rhs, lhs, rhs, "<", assert.lt);
+}
+
+assert.le = function(lhs: number, rhs: number): void {
+    assert.binop(lhs <= rhs, lhs, rhs, "<=", assert.le);
+}
+
+assert.gt = function(lhs: number, rhs: number): void {
+    assert.binop(lhs > rhs, lhs, rhs, ">", assert.gt);
+}
+
+assert.ge = function(lhs: number, rhs: number): void {
+    assert.binop(lhs >= rhs, lhs, rhs, ">=", assert.ge);
+}
