@@ -3,13 +3,22 @@ import { BaseException, ExceptionParameters } from "./exception";
 
 export type ValueUnderlying = null | boolean | bigint | number | string;
 
+function floatToString(value: number, sigfigs: number = 12): string {
+    const parts = value.toPrecision(sigfigs).split("e");
+    parts[0] = parts[0].replace(/0+$/, "").replace(/\.$/, ".0");
+    return parts.join("e");
+}
+  
 export class Value {
     private constructor(public underlying: ValueUnderlying, public readonly kind: Value.Kind) {}
     [Symbol.toPrimitive](hint_: string) {
         return this.underlying;
     }
     toString(): string {
-        return `${this.underlying}`;
+        if (this.kind === Value.Kind.Float) {
+            return floatToString(this.underlying as number);
+        }
+        return String(this.underlying);
     }
     isVoid(): boolean {
         return this.kind === Value.Kind.Void;
