@@ -1,6 +1,6 @@
 import { assert } from "./assertion";
 import { Compiler } from "./compiler";
-import { BaseException, ExceptionParameters } from "./exception";
+import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
 import { Program } from "./program";
 import { Type } from "./type";
@@ -33,14 +33,15 @@ function evaluateBinaryOperator(lhs: Value, op: string, rhs: Value): Value {
 }
 
 abstract class Node implements Program.Node {
+    constructor(public location: Program.Location) {}
     abstract evaluate(runner: Program.Runner): Value;
     abstract entype(runner: Program.Runner): Type;
     abstract execute(runner: Program.Runner): void;
 }
 
 class Node_Module extends Node {
-    constructor(public children: Node[]) {
-        super();
+    constructor(location: Program.Location, public children: Node[]) {
+        super(location);
     }
     evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
@@ -56,8 +57,8 @@ class Node_Module extends Node {
 }
 
 class Node_StmtVariableDefine extends Node {
-    constructor(public name: string, public type: Node, public initializer: Node) {
-        super();
+    constructor(location: Program.Location, public name: string, public type: Node, public initializer: Node) {
+        super(location);
     }
     evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
@@ -66,13 +67,16 @@ class Node_StmtVariableDefine extends Node {
         runner.unimplemented();
     }
     execute(runner: Program.Runner): void {
-        runner.variableDefine(this.name, this.type.entype(runner), this.initializer.evaluate(runner));
+        const type = this.type.entype(runner);
+        const initializer = this.initializer.evaluate(runner);
+        runner.location = this.initializer.location;
+        runner.variableDefine(this.name, type, initializer);
     }
 }
 
 class Node_StmtCall extends Node {
-    constructor(public children: Node[]) {
-        super();
+    constructor(location: Program.Location, public children: Node[]) {
+        super(location);
     }
     evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
@@ -82,15 +86,17 @@ class Node_StmtCall extends Node {
     }
     execute(runner: Program.Runner): void {
         const text = this.children.slice(1).map(child => child.evaluate(runner).toString()).join("");
+        runner.location = this.location;
         runner.print(text);
     }
 }
 
 class Node_LiteralIdentifier extends Node {
-    constructor(public identifier: string) {
-        super();
+    constructor(location: Program.Location, public identifier: string) {
+        super(location);
     }
     evaluate(runner: Program.Runner): Value {
+        runner.location = this.location;
         return runner.variableGet(this.identifier);
     }
     entype(runner: Program.Runner): Type {
@@ -102,8 +108,8 @@ class Node_LiteralIdentifier extends Node {
 }
 
 class Node_TypeLiteral extends Node {
-    constructor(public type: Type) {
-        super();
+    constructor(location: Program.Location, public type: Type) {
+        super(location);
     }
     evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
@@ -117,8 +123,8 @@ class Node_TypeLiteral extends Node {
 }
 
 class Node_ValueLiteral extends Node {
-    constructor(public value: Value) {
-        super();
+    constructor(location: Program.Location, public value: Value) {
+        super(location);
     }
     evaluate(runner_: Program.Runner): Value {
         return this.value;
@@ -132,11 +138,14 @@ class Node_ValueLiteral extends Node {
 }
 
 class Node_ValueOperatorBinary extends Node {
-    constructor(public lhs: Node, public op: string, public rhs: Node) {
-        super();
+    constructor(location: Program.Location, public lhs: Node, public op: string, public rhs: Node) {
+        super(location);
     }
     evaluate(runner: Program.Runner): Value {
-        return evaluateBinaryOperator(this.lhs.evaluate(runner), this.op, this.rhs.evaluate(runner));
+        const lhs = this.lhs.evaluate(runner);
+        const rhs = this.rhs.evaluate(runner);
+        runner.location = this.location;
+        return evaluateBinaryOperator(lhs, this.op, rhs);
     }
     entype(runner: Program.Runner): Type {
         runner.unimplemented();
@@ -159,43 +168,43 @@ class Impl extends Logger {
     }
     linkModule(module: Compiler.Module): Module {
         const root = this.linkNode(module.root);
-        return new Module(root, module.source);
+        return new Module(root, root.location.source);
     }
     linkNode(node: Compiler.Node): Node {
         switch (node.kind) {
             case Compiler.Kind.Module:
-                return new Node_Module(this.linkNodes(node.children));
+                return new Node_Module(node.location, this.linkNodes(node.children));
             case Compiler.Kind.StmtVariableDefine:
                 assert.eq(node.children.length, 2);
-                return new Node_StmtVariableDefine(node.value.getString(), this.linkNode(node.children[0]), this.linkNode(node.children[1]));
+                return new Node_StmtVariableDefine(node.location, node.value.getString(), this.linkNode(node.children[0]), this.linkNode(node.children[1]));
             case Compiler.Kind.StmtCall:
                 assert.ge(node.children.length, 1);
-                return new Node_StmtCall(this.linkNodes(node.children));
+                return new Node_StmtCall(node.location, this.linkNodes(node.children));
             case Compiler.Kind.Identifier:
                 assert.eq(node.children.length, 0);
-                return new Node_LiteralIdentifier(node.value.getString());
+                return new Node_LiteralIdentifier(node.location, node.value.getString());
             case Compiler.Kind.TypeKeyword:
                 assert.eq(node.children.length, 0);
                 switch (node.value.getString()) {
                     case "void":
-                        return new Node_TypeLiteral(Type.VOID);
+                        return new Node_TypeLiteral(node.location, Type.VOID);
                     case "bool":
-                        return new Node_TypeLiteral(Type.BOOL);
+                        return new Node_TypeLiteral(node.location, Type.BOOL);
                     case "int":
-                        return new Node_TypeLiteral(Type.INT);
+                        return new Node_TypeLiteral(node.location, Type.INT);
                     case "float":
-                        return new Node_TypeLiteral(Type.FLOAT);
+                        return new Node_TypeLiteral(node.location, Type.FLOAT);
                     case "string":
-                        return new Node_TypeLiteral(Type.STRING);
+                        return new Node_TypeLiteral(node.location, Type.STRING);
                 }
                 assert.fail("Unknown keyword for Compiler.Kind.TypeKeywordnode in linkNode: {keyword}", {keyword:node.value.getString()});
                 break;
             case Compiler.Kind.ValueLiteral:
                 assert.eq(node.children.length, 0);
-                return new Node_ValueLiteral(node.value);
+                return new Node_ValueLiteral(node.location, node.value);
             case Compiler.Kind.ValueOperatorBinary:
                 assert.eq(node.children.length, 2);
-                return new Node_ValueOperatorBinary(this.linkNode(node.children[0]), node.value.getString(), this.linkNode(node.children[1]));
+                return new Node_ValueOperatorBinary(node.location, this.linkNode(node.children[0]), node.value.getString(), this.linkNode(node.children[1]));
         }
         assert.fail("Unknown node kind in linkNode: {kind}", {kind:node.kind});
     }
@@ -228,7 +237,7 @@ export class Linker {
 export namespace Linker {
     export class Exception extends BaseException {
         constructor(message: string, parameters?: ExceptionParameters) {
-            super("Exception", message, parameters);
+            super("LinkerException", ExceptionOrigin.Linker, message, parameters);
         }
     }
 }

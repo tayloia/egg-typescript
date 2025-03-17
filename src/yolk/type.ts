@@ -46,7 +46,8 @@ export class Type {
         return undefined;
     }
     describe(): string {
-        return "WIBBLE";
+        const joined = Array.from(this.primitives.values()).join("|");
+        return joined || "unknown";
     }
 }
 

@@ -1,7 +1,7 @@
 import * as fs from "fs";
 
 import { assert } from "./assertion";
-import { BaseException, ExceptionParameters } from "./exception";
+import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
 
 function isLineSeparator(codepoint: number): boolean {
     switch (codepoint) {
@@ -370,7 +370,7 @@ export class Tokenizer {
 export namespace Tokenizer {
     export class Exception extends BaseException {
         constructor(message: string, parameters?: ExceptionParameters) {
-            super("TokenizerException", message, parameters);
+            super("TokenizerException", ExceptionOrigin.Tokenizer, message, parameters);
         }
     }
     export enum Kind {

@@ -7,6 +7,7 @@ import { Parser } from "../parser";
 import { Program } from "../program";
 import { AssertionError } from "assertion-error";
 import { assert } from "../assertion";
+import { BaseException } from "../exception";
 
 export namespace Testing {
     function basePath(mocha: Mocha.Context | Mocha.Suite, depth: number): string {
@@ -77,17 +78,32 @@ export class TestProgram extends TestLogger {
         };
         const makeActual = (index: number) => {
             const entry = this.logged[index];
+            const format = (prefix: string): string => {
+                const origin = entry.parameters?.origin as string | undefined;
+                if (origin) {
+                    prefix = "<" + origin + ">" + prefix;
+                }
+                const location = entry.parameters?.location as Program.Location | undefined;
+                if (location) {
+                    const range = (lbound: number, ubound: number): string => {
+                        return lbound < ubound ? `${lbound}-${ubound}` : `${lbound}`;
+                    };
+                    prefix += (location.source === this.source) ? "<RESOURCE>" : this.source;
+                    prefix += `(${range(location.line0, location.line1)},${range(location.column0, location.column1)}): `;
+                }
+                return prefix + entry.format();
+            };
             switch (entry?.severity) {
                 case Logger.Severity.Error:
-                    return "<ERROR>" + entry.format();
+                    return format("<ERROR>");
                 case Logger.Severity.Warning:
-                    return "<WARNING>" + entry.format();
+                    return format("<WARNING>");
                 case Logger.Severity.Info:
-                    return "<INFO>" + entry.format();
+                    return format("<INFO>");
                 case Logger.Severity.Debug:
-                    return "<DEBUG>" + entry.format();
+                    return format("<DEBUG>");
                 case Logger.Severity.Trace:
-                    return "<TRACE>" + entry.format();
+                    return format("<TRACE>");
                 case Logger.Severity.Print:
                     return entry.message;
             }
@@ -96,7 +112,16 @@ export class TestProgram extends TestLogger {
             return `    at script (${this.source}:${line})`;
         }
         assert(this.logged.length === 0);
-        this.run();
+        try {
+            this.run();
+        }
+        catch (exception) {
+            if (exception instanceof BaseException) {
+                this.error(exception.message, exception.parameters);
+            } else {
+                this.error(`Unknown exception: ${exception}`, {exception});
+            }
+        }
         let logged = 0;
         let line = 0;
         const matches = this.input.matchAll(/([^\r\n]*)\r?\n?/g);

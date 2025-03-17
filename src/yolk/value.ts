@@ -1,5 +1,5 @@
 import { assert } from "./assertion";
-import { BaseException, ExceptionParameters } from "./exception";
+import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
 
 export type ValueUnderlying = null | boolean | bigint | number | string;
 
@@ -49,6 +49,24 @@ export class Value {
         assert.eq(this.kind, Value.Kind.Int);
         return Number(this.underlying as bigint);
     }
+    describe(): string {
+        switch (this.kind) {
+            case Value.Kind.Void:
+                return "a value of type 'void'";
+            case Value.Kind.Null:
+                return "'null'";
+            case Value.Kind.Bool:
+                return this.underlying ? "'true'" : "'false'";
+            case Value.Kind.Int:
+                return "a value of type 'int'";
+            case Value.Kind.Float:
+                return "a value of type 'float'";
+            case Value.Kind.String:
+                return "a value of type 'string'";
+            case Value.Kind.Object:
+                return "a value of type 'object'";
+        }
+    }
     static fromVoid() {
         return new Value(null, Value.Kind.Void);
     }
@@ -72,7 +90,7 @@ export class Value {
 export namespace Value {
     export class Exception extends BaseException {
         constructor(message: string, parameters?: ExceptionParameters) {
-            super("ValueException", message, parameters);
+            super("ValueException", ExceptionOrigin.Runtime, message, parameters);
         }
     }
     export enum Kind {

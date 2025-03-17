@@ -1,36 +1,40 @@
 import { assert } from "./assertion";
-import { BaseException, ExceptionParameters } from "./exception";
+import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
 import { Logger } from "./logger";
 import { Parser } from "./parser";
+import { Program } from "./program";
 import { Value } from "./value";
 
 class Node implements Compiler.Node {
-    constructor(public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: Value = Value.VOID) {}
+    constructor(public location: Program.Location, public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: Value = Value.VOID) {}
 }
 
 class Module implements Compiler.Module {
-    constructor(public readonly root: Node, public readonly source: string) {}
+    constructor(public readonly root: Node) {}
+    get source(): string {
+        return this.root.location.source;
+    }
 }
 
 class Impl extends Logger {
-    constructor(public input: Parser.Node, public source: string, public logger: Logger) {
+    constructor(public input: Parser.Node, public logger: Logger) {
         super();
     }
     compileModule(): Module {
         const statements = this.input.children.map(child => this.compileModuleStatement(child));
-        const root = new Node(Compiler.Kind.Module, statements);
-        return new Module(root, this.source);
+        const root = new Node(this.input.location, Compiler.Kind.Module, statements);
+        return new Module(root);
     }
     compileModuleStatement(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.FunctionCall:
-                return new Node(Compiler.Kind.StmtCall, [this.compileExpr(pnode.children[0]), ...this.compileExprArguments(pnode.children[1])])
+                return new Node(pnode.location, Compiler.Kind.StmtCall, [this.compileExpr(pnode.children[0]), ...this.compileExprArguments(pnode.children[1])])
             case Parser.Kind.Variable:
                 switch (pnode.children.length) {
                     case 1:
-                        return new Node(Compiler.Kind.StmtVariableDeclare, [this.compileType(pnode.children[0])], pnode.value)
+                        return new Node(pnode.location, Compiler.Kind.StmtVariableDeclare, [this.compileType(pnode.children[0])], pnode.value)
                     case 2:
-                        return new Node(Compiler.Kind.StmtVariableDefine, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
+                        return new Node(pnode.location, Compiler.Kind.StmtVariableDefine, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
                 }
                 assert.fail("Invalid number of children for Parser.Kind.Variable: {length}", {length:pnode.children.length});
         }
@@ -40,7 +44,7 @@ class Impl extends Logger {
         switch (pnode.kind) {
             case Parser.Kind.TypeKeyword:
                 assert.eq(pnode.children.length, 0);
-                return new Node(Compiler.Kind.TypeKeyword, [], pnode.value);
+                return new Node(pnode.location, Compiler.Kind.TypeKeyword, [], pnode.value);
             case undefined:
                 break;
         }
@@ -49,16 +53,16 @@ class Impl extends Logger {
     compileExpr(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
-                return new Node(Compiler.Kind.Identifier, [], pnode.value);
+                return new Node(pnode.location, Compiler.Kind.Identifier, [], pnode.value);
             case Parser.Kind.Literal:
-                return new Node(Compiler.Kind.ValueLiteral, [], pnode.value);
+                return new Node(pnode.location, Compiler.Kind.ValueLiteral, [], pnode.value);
             case Parser.Kind.OperatorBinary:
                 return this.compileExprBinary(pnode.children[0], pnode.value.getString(), pnode.children[1]);
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
     compileExprBinary(plhs: Parser.Node, op: string, prhs: Parser.Node): Node {
-        return new Node(Compiler.Kind.ValueOperatorBinary, [this.compileExpr(plhs), this.compileExpr(prhs)], Value.fromString(op));
+        return new Node(plhs.location, Compiler.Kind.ValueOperatorBinary, [this.compileExpr(plhs), this.compileExpr(prhs)], Value.fromString(op));
     }
     compileExprArguments(pnode: Parser.Node): Node[] {
         assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
@@ -77,7 +81,7 @@ export class Compiler {
     }
     compile(): Module {
         const parsed = this.parser.parse();
-        const impl = new Impl(parsed, this.parser.input.source, this.logger);
+        const impl = new Impl(parsed, this.logger);
         return impl.compileModule();
     }
     withLogger(logger: Logger): Compiler {
@@ -95,7 +99,7 @@ export class Compiler {
 export namespace Compiler {
     export class Exception extends BaseException {
         constructor(message: string, parameters?: ExceptionParameters) {
-            super("CompilerException", message, parameters);
+            super("CompilerException", ExceptionOrigin.Compiler, message, parameters);
         }
     }
     export enum Kind {
@@ -112,9 +116,10 @@ export namespace Compiler {
         kind: Kind;
         children: Node[];
         value: Value;
+        location: Program.Location;
     }
     export interface Module {
         root: Node;
-        source: string;
+        readonly source: string;
     }
 }

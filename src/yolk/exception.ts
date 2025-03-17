@@ -1,10 +1,19 @@
 export type ExceptionParameters = Record<string, unknown>;
 
-export class BaseException extends Error {
+export enum ExceptionOrigin {
+    Assertion = "ASSERTION",
+    Compiler = "COMPILER",
+    Linker = "LINKER",
+    Parser = "PARSER",
+    Runtime = "RUNTIME",
+    Tokenizer = "TOKENIZER",
+};
+
+export abstract class BaseException extends Error {
     parameters: ExceptionParameters;
-    protected constructor(name: string, private _message: string, parameters?: ExceptionParameters) {
+    protected constructor(name: string, origin: ExceptionOrigin, private _message: string, parameters?: ExceptionParameters) {
         super();
-        this.parameters = parameters ? { ...parameters, name: name } : { name: name };
+        this.parameters = parameters ? { ...parameters, name, origin } : { name, origin };
     }
     get message(): string {
         return Exception.format(this._message, this.parameters);
@@ -12,13 +21,13 @@ export class BaseException extends Error {
     get name(): string {
         return this.parameters.name as string;
     }
+    get origin(): ExceptionOrigin {
+        return this.parameters.origin as ExceptionOrigin;
+    }
 }
 
-export class Exception extends BaseException {
-    constructor(message: string, parameters?: ExceptionParameters) {
-        super(Exception.name, message, parameters);
-    }
-    static location(source: unknown, line: unknown, column: unknown): string {
+export namespace Exception {
+    export function location(source: unknown, line: unknown, column: unknown): string {
         if (column) {
             return `${source || ""}(${line},${column}): `;
         }
@@ -30,7 +39,7 @@ export class Exception extends BaseException {
         }
         return "";
     }
-    static format(message: string, parameters: ExceptionParameters): string {
+    export function format(message: string, parameters: ExceptionParameters): string {
         function replacer(input: string, key: string): string {
             if (key === "location") {
                 return Exception.location(parameters.source, parameters.line, parameters.column);
@@ -42,5 +51,11 @@ export class Exception extends BaseException {
             return String(output);
         }
         return message.replace(/\{([^}]+)\}/g, replacer);
+    }
+}
+
+export class RuntimeException extends BaseException {
+    constructor(message: string, parameters?: ExceptionParameters) {
+        super("RuntimeException", ExceptionOrigin.Runtime, message, parameters);
     }
 }

@@ -1,5 +1,5 @@
 import { assert } from "./assertion";
-import { Exception } from "./exception";
+import { ExceptionParameters, RuntimeException } from "./exception";
 import { Logger } from "./logger";
 import { SymbolTable } from "./symboltable";
 import { Type } from "./type";
@@ -14,7 +14,25 @@ export class Program {
 }
 
 export namespace Program {
+    export class Location {
+        constructor(public source: string, public line0: number = 1, public column0: number = 1, public line1: number = 0, public column1: number = 0) {}
+        span(that: Location): Location {
+            assert.eq(this.source, that.source);
+            assert.gt(that.line1, 0);
+            assert.gt(that.column1, 0);
+            this.line1 = that.line1;
+            this.column1 = that.column1;
+            return this;
+        }
+        format() {
+            function range(lbound: number, ubound: number): string {
+                return lbound < ubound ? `${lbound}-${ubound}` : `${lbound}`;
+            }
+            return `${this.source}(${range(this.line0, this.line1)},${range(this.column0, this.column1)})`;
+        }
+    }
     export abstract class Runner extends Logger {
+        abstract location: Location;
         abstract variableDeclare(name: string, type: Type): void;
         abstract variableDefine(name: string, type: Type, initializer: Value): void;
         abstract variableSet(name: string, value: Value): void;
@@ -26,7 +44,7 @@ export namespace Program {
     }
     export interface Module {
         root: Node;
-        source: string;
+        get source(): string;
     }
 }
 
@@ -34,40 +52,55 @@ class Runner extends Program.Runner {
     constructor(public program: Program, public logger: Logger) {
         super();
         this.variables = new SymbolTable();
+        this.location = new Program.Location("");
     }
     variables: SymbolTable;
+    location: Program.Location;
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
+    }
+    throw(message: string, parameters?: ExceptionParameters): never {
+        throw new RuntimeException(message, {
+            ...parameters,
+            location: this.location,
+        });
     }
     run(): void {
         assert.eq(this.program.modules.length, 1);
         this.program.modules[0].root.execute(this);
     }
-    variableDeclare(name: string, type: Type): void {
-        this.variables.declare(name, type);
+    variableDeclare(symbol: string, type: Type): void {
+        this.variables.declare(symbol, type);
     }
-    variableDefine(name: string, type: Type, initializer: Value): void {
+    variableDefine(symbol: string, type: Type, initializer: Value): void {
         const compatible = type.compatible(initializer);
         if (compatible === undefined) {
-            throw new Exception("Cannot initialize value of type '{type}' to variable '{name}'", {name, type:type.describe()});
+            this.throw("Cannot initialize '{symbol}' of type '{dsttype}' with {srctype}", {
+                symbol,
+                dsttype: type.describe(),
+                srctype:initializer.describe()
+            });
         }
-        this.variables.define(name, type, compatible);
+        this.variables.define(symbol, type, compatible);
     }
-    variableSet(name: string, value: Value): void {
-        const entry = this.variables.find(name);
+    variableSet(symbol: string, value: Value): void {
+        const entry = this.variables.find(symbol);
         if (entry === undefined) {
-            throw new Exception("Variable not found in symbol table (set): '{name}'", {name});
+            this.throw("Variable not found in symbol table (set): '{symbol}'", {symbol});
         }
         const compatible = entry.type.compatible(value);
         if (compatible === undefined) {
-            throw new Exception("Cannot assign value of type '{type}' to variable '{name}'", {name, type:entry.type.describe()});
+            this.throw("Cannot assign value of type '{type}' to variable '{symbol}'", {
+                symbol,
+                type: entry.type.describe()
+            });
         }
         entry.value = compatible;
     }
-    variableGet(name: string): Value {
-        const entry = this.variables.find(name);
+    variableGet(symbol: string): Value {
+        const entry = this.variables.find(symbol);
         if (!entry) {
-            throw new Exception("Variable not found in symbol table (get): '{name}'", {name});
+            this.throw("Variable not found in symbol table (get): '{symbol}'", {symbol});
         }
         return entry.value;
     }

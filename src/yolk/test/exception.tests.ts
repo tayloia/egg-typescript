@@ -1,6 +1,12 @@
 import { expect } from "chai";
 
-import { Exception, BaseException, ExceptionParameters } from "../exception";
+import { Exception, BaseException, ExceptionParameters, ExceptionOrigin } from "../exception";
+
+class CustomException extends BaseException {
+    constructor(message: string, parameters?: ExceptionParameters) {
+        super("CustomException", ExceptionOrigin.Runtime, message, parameters);
+    }
+}
 
 describe("Exception", function() {
     it("should support format helper", function() {
@@ -22,21 +28,26 @@ describe("Exception", function() {
         expect(Exception.location("source", 1, 2)).equals("source(1,2): ");
     });
     it("should format message", function() {
-        const exception = new Exception("{h}, {w}", {h:"hello", w:"world"});
+        const exception = new CustomException("{h}, {w}", {h:"hello", w:"world"});
         expect(exception.message).equals("hello, world");
         exception.parameters.h = "goodbye";
         expect(exception.message).equals("goodbye, world");
     });
     it("should format name", function() {
-        const exception = new Exception("[{name}]");
-        expect(exception.message).equals("[Exception]");
-        expect(exception.name).equals("Exception");
+        const exception = new CustomException("[{name}]");
+        expect(exception.message).equals("[CustomException]");
+        expect(exception.name).equals("CustomException");
         exception.parameters.name = "Overwritten";
         expect(exception.message).equals("[Overwritten]");
         expect(exception.name).equals("Overwritten");
     });
+    it("should format origin", function() {
+        const exception = new CustomException("[{origin}]");
+        expect(exception.message).equals("[RUNTIME]");
+        expect(exception.origin).equals(ExceptionOrigin.Runtime);
+    });
     it("should format location", function() {
-        const exception = new Exception("{location}reason", {source:"source", line:1, column:2});
+        const exception = new CustomException("{location}reason", {source:"source", line:1, column:2});
         expect(exception.message).equals("source(1,2): reason");
         exception.parameters.column = 0;
         expect(exception.message).equals("source(1): reason");
@@ -55,17 +66,12 @@ describe("Exception", function() {
     });
     it("should throw Error type", function() {
         expect(() => {
-            throw new Exception("{h}, {w}", {h:"hello", w:"world"});
+            throw new CustomException("{h}, {w}", {h:"hello", w:"world"});
         }).throws(Error).property("message").equals("hello, world");
     });
     it("should support custom exceptions", function() {
-        class CustomException extends BaseException {
-            constructor(message: string, parameters?: ExceptionParameters) {
-                super(CustomException.name, message, parameters);
-            }
-        }
         expect(() => {
             throw new CustomException("{h}, {w}", {h:"hello", w:"world"});
-        }).throws(CustomException).includes({message: "hello, world", name: "CustomException"});
+        }).throws(CustomException).includes({message:"hello, world", name:"CustomException"});
     });
 });

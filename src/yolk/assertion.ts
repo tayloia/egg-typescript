@@ -1,4 +1,4 @@
-import { BaseException, ExceptionParameters } from "./exception";
+import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
 
 function extractCaller(caller: { name: string }): string {
     if (caller) {
@@ -16,7 +16,7 @@ function extractCaller(caller: { name: string }): string {
 
 export class AssertionException extends BaseException {
     constructor(message: string, parameters?: ExceptionParameters) {
-        super("AssertionException", message, parameters);
+        super("AssertionException", ExceptionOrigin.Assertion, message, parameters);
     }
 }
 

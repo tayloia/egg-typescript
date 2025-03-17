@@ -1,6 +1,7 @@
 import { assert } from "./assertion";
-import { BaseException, ExceptionParameters } from "./exception";
+import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
+import { Program } from "./program";
 import { Tokenizer } from "./tokenizer";
 import { Value } from "./value";
 
@@ -62,40 +63,41 @@ class Input {
 }
 
 class Node implements Parser.Node {
-    private constructor(public kind: Parser.Kind, public children: Node[] = [], public value: Value = Value.VOID) {}
-    static createModule(children: Node[]): Node {
-        return new Node(Parser.Kind.Module, children);
+    private constructor(public location: Program.Location, public kind: Parser.Kind, public children: Node[] = [], public value: Value = Value.VOID) {}
+    static createModule(source: string, children: Node[]): Node {
+        const location = new Program.Location(source);
+        return new Node(location, Parser.Kind.Module, children);
     }
-    static createIdentifier(name: string): Node {
-        return new Node(Parser.Kind.Identifier, [], Value.fromString(name));
+    static createIdentifier(location: Program.Location, name: string): Node {
+        return new Node(location, Parser.Kind.Identifier, [], Value.fromString(name));
     }
-    static createLiteral(value: Value): Node {
-        return new Node(Parser.Kind.Literal, [], value);
+    static createLiteral(location: Program.Location, value: Value): Node {
+        return new Node(location, Parser.Kind.Literal, [], value);
     }
-    static createTypeKeyword(keyword: string): Node {
-        return new Node(Parser.Kind.TypeKeyword, [], Value.fromString(keyword));
+    static createTypeKeyword(location: Program.Location, keyword: string): Node {
+        return new Node(location, Parser.Kind.TypeKeyword, [], Value.fromString(keyword));
     }
-    static createVariableDefinition(name: string, type: Node, initializer: Node): Node {
-        return new Node(Parser.Kind.Variable, [type, initializer], Value.fromString(name));
+    static createVariableDefinition(location: Program.Location, name: string, type: Node, initializer: Node): Node {
+        return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(name));
     }
-    static createVariableDeclaration(name: string, type: Node, initializer: Node): Node {
-        return new Node(Parser.Kind.Variable, [type, initializer], Value.fromString(name));
+    static createVariableDeclaration(location: Program.Location, name: string, type: Node, initializer: Node): Node {
+        return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(name));
     }
-    static createFunctionCall(callee: Node, fnargs: Node): Node {
+    static createFunctionCall(location: Program.Location, callee: Node, fnargs: Node): Node {
         assert.eq(fnargs.kind, Parser.Kind.FunctionArguments);
-        return new Node(Parser.Kind.FunctionCall, [callee, fnargs]);
+        return new Node(location, Parser.Kind.FunctionCall, [callee, fnargs]);
     }
-    static createFunctionArguments(nodes: Node[]): Node {
-        return new Node(Parser.Kind.FunctionArguments, nodes);
+    static createFunctionArguments(location: Program.Location, nodes: Node[]): Node {
+        return new Node(location, Parser.Kind.FunctionArguments, nodes);
     }
-    static createOperatorTernary(lhs: Node, mid: Node, rhs: Node, op: string): Node {
-        return new Node(Parser.Kind.OperatorTernary, [lhs, mid, rhs], Value.fromString(op));
+    static createOperatorTernary(location: Program.Location, lhs: Node, mid: Node, rhs: Node, op: string): Node {
+        return new Node(location, Parser.Kind.OperatorTernary, [lhs, mid, rhs], Value.fromString(op));
     }
-    static createOperatorBinary(lhs: Node, rhs: Node, op: string): Node {
-        return new Node(Parser.Kind.OperatorBinary, [lhs, rhs], Value.fromString(op));
+    static createOperatorBinary(location: Program.Location, lhs: Node, rhs: Node, op: string): Node {
+        return new Node(location, Parser.Kind.OperatorBinary, [lhs, rhs], Value.fromString(op));
     }
-    static createOperatorUnary(rhs: Node, op: string): Node {
-        return new Node(Parser.Kind.OperatorBinary, [rhs], Value.fromString(op));
+    static createOperatorUnary(location: Program.Location, rhs: Node, op: string): Node {
+        return new Node(location, Parser.Kind.OperatorBinary, [rhs], Value.fromString(op));
     }
 }
 
@@ -129,7 +131,7 @@ class Impl extends Logger {
             children.push(node);
             incoming = this.input.peek();
         }
-        return Node.createModule(children);
+        return Node.createModule(this.input.source, children);
     }
     private expectModuleStatement(): Node {
         const statement = this.parseStatement(0);
@@ -154,7 +156,7 @@ class Impl extends Logger {
             if (identifier && this.isPunctuation(identifier.lookahead, "=")) {
                 const initializer = this.parseValueExpression(identifier.lookahead + 1);
                 if (initializer) {
-                    return this.success(Node.createVariableDefinition(identifier.node.value.getString(), type.node, initializer.node), initializer.lookahead);
+                    return this.success(Node.createVariableDefinition(identifier.node.location, identifier.node.value.getString(), type.node, initializer.node), initializer.lookahead);
                 }
             }
         }
@@ -165,12 +167,13 @@ class Impl extends Logger {
         if ((callee = this.parseIdentifier(lookahead))) {
             if (this.peekPunctuation(callee.lookahead) === "(") {
                 const fnargs = this.expectFunctionArguments(callee.lookahead);
-                return this.success(Node.createFunctionCall(callee.node, fnargs.node), fnargs.lookahead);
+                return this.success(Node.createFunctionCall(callee.node.location, callee.node, fnargs.node), fnargs.lookahead);
             }
         }
         return undefined;
     }
     private expectFunctionArguments(lookahead: number): Success {
+        const start = lookahead;
         assert(this.peekPunctuation(lookahead) === "(");
         lookahead++;
         const nodes = [];
@@ -190,7 +193,7 @@ class Impl extends Logger {
             }
         }
         assert(this.peekPunctuation(lookahead) === ")");
-        return this.success(Node.createFunctionArguments(nodes), lookahead + 1);
+        return this.success(Node.createFunctionArguments(this.peekLocation(start, lookahead), nodes), lookahead + 1);
     }
     private expectFunctionArgument(lookahead: number): Success {
         return this.parseExpression(lookahead)
@@ -210,7 +213,7 @@ class Impl extends Logger {
             case "int":
             case "float":
             case "string":
-                return this.success(Node.createTypeKeyword(keyword), lookahead + 1);
+                return this.success(Node.createTypeKeyword(this.peekLocation(lookahead), keyword), lookahead + 1);
         }
         return undefined;
     }
@@ -224,7 +227,8 @@ class Impl extends Logger {
             if (mid && this.isPunctuation(lhs.lookahead, ":")) {
                 const rhs = this.parseValueExpression(mid.lookahead + 1);
                 if (rhs) {
-                    return this.success(Node.createOperatorTernary(lhs.node, mid.node, rhs.node, "?:"), rhs.lookahead);
+                    const location = lhs.node.location.span(rhs.node.location);
+                    return this.success(Node.createOperatorTernary(location, lhs.node, mid.node, rhs.node, "?:"), rhs.lookahead);
                 }
             }
         }
@@ -246,7 +250,8 @@ class Impl extends Logger {
         if (this.isPunctuation(lhs.lookahead, op)) {
             const rhs = this.parseValueExpression(lhs.lookahead + op.length);
             if (rhs) {
-                return this.success(Node.createOperatorBinary(lhs.node, rhs.node, op), rhs.lookahead);
+                const location = lhs.node.location.span(rhs.node.location);
+                return this.success(Node.createOperatorBinary(location, lhs.node, rhs.node, op), rhs.lookahead);
             }
         }
         return undefined;
@@ -265,14 +270,14 @@ class Impl extends Logger {
     private parseIdentifier(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Identifier) {
-            const node = Node.createIdentifier(token.value as string);
+            const node = Node.createIdentifier(this.peekLocation(token), token.value as string);
             return this.success(node, lookahead + 1);
         }
         return undefined;
     }
     private parseNullLiteral(lookahead: number): Success | undefined {
         if (this.peekKeyword(lookahead) === "null") {
-            const node = Node.createLiteral(Value.NULL);
+            const node = Node.createLiteral(this.peekLocation(lookahead), Value.NULL);
             return this.success(node, lookahead + 1);
         }
         return undefined;
@@ -280,16 +285,16 @@ class Impl extends Logger {
     private parseBooleanLiteral(lookahead: number): Success | undefined {
         switch (this.peekKeyword(lookahead)) {
             case "false":
-                return this.success(Node.createLiteral(Value.FALSE), lookahead + 1);
+                return this.success(Node.createLiteral(this.peekLocation(lookahead), Value.FALSE), lookahead + 1);
             case "true":
-                return this.success(Node.createLiteral(Value.TRUE), lookahead + 1);
+                return this.success(Node.createLiteral(this.peekLocation(lookahead), Value.TRUE), lookahead + 1);
             }
         return undefined;
     }
     private parseIntegerLiteral(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Integer) {
-            const node = Node.createLiteral(Value.fromInt(token.value as bigint));
+            const node = Node.createLiteral(this.peekLocation(token), Value.fromInt(token.value as bigint));
             return this.success(node, lookahead + 1);
         }
         return undefined;
@@ -297,7 +302,7 @@ class Impl extends Logger {
     private parseFloatLiteral(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Float) {
-            const node = Node.createLiteral(Value.fromFloat(token.value as number));
+            const node = Node.createLiteral(this.peekLocation(token), Value.fromFloat(token.value as number));
             return this.success(node, lookahead + 1);
         }
         return undefined;
@@ -305,7 +310,7 @@ class Impl extends Logger {
     private parseStringLiteral(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.String) {
-            const node = Node.createLiteral(Value.fromString(token.value as string));
+            const node = Node.createLiteral(this.peekLocation(token), Value.fromString(token.value as string));
             return this.success(node, lookahead + 1);
         }
         return undefined;
@@ -336,6 +341,20 @@ class Impl extends Logger {
             }
         }
         return true;
+    }
+    private peekLocation(lbound: Token | number, ubound?: Token | number): Program.Location {
+        const start = (lookahead: Token | number): [number, number] => {
+            const token = (typeof lookahead === "number") ? this.input.peek(lookahead) : lookahead;
+            return [token.line, token.column];
+        }
+        const end = (lookahead: Token | number): [number, number] => {
+            const token = (typeof lookahead === "number") ? this.input.peek(lookahead) : lookahead;
+            return [token.line, token.column + token.underlying.raw.length - 1];
+        }
+        if (ubound === undefined) {
+            return new Program.Location(this.input.source, ...start(lbound), ...end(lbound));
+        }
+        return new Program.Location(this.input.source, ...start(lbound), ...end(ubound));
     }
     private throwUnexpected(message: string, lookahead: number, expected?: string): never {
         this.throw(this.unexpected(message, lookahead, expected));
@@ -407,7 +426,7 @@ export class Parser {
 export namespace Parser {
     export class Exception extends BaseException {
         constructor(message: string, parameters?: ExceptionParameters) {
-            super("ParserException", message, parameters);
+            super("ParserException", ExceptionOrigin.Parser, message, parameters);
         }
     }
     export enum Kind {
@@ -423,6 +442,7 @@ export namespace Parser {
         OperatorUnary = "operator-unary",
     }
     export interface Node {
+        location: Program.Location;
         kind: Kind;
         children: Node[];
         value: Value;
