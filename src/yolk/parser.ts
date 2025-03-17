@@ -86,6 +86,9 @@ class Node implements Parser.Node {
     static createVariableDeclaration(location: Program.Location, name: string, type: Node, initializer: Node): Node {
         return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(name));
     }
+    static createPropertyGet(location: Program.Location, instance: Node, property: Node): Node {
+        return new Node(location, Parser.Kind.PropertyGet, [instance, property]);
+    }
     static createFunctionCall(location: Program.Location, callee: Node, fnargs: Node): Node {
         assert.eq(fnargs.kind, Parser.Kind.FunctionArguments);
         return new Node(location, Parser.Kind.FunctionCall, [callee, fnargs]);
@@ -166,12 +169,9 @@ class Impl extends Logger {
         return undefined;
     }
     private parseFunctionCall(lookahead: number): Success | undefined {
-        const callee = this.parseIdentifier(lookahead);
-        if (callee) {
-            if (this.peekPunctuation(callee.lookahead) === "(") {
-                const fnargs = this.expectFunctionArguments(callee.lookahead);
-                return this.success(Node.createFunctionCall(callee.node.location, callee.node, fnargs.node), fnargs.lookahead);
-            }
+        const call = this.parseValueExpressionPrimary(lookahead);
+        if (call && call.node && call.node.kind === Parser.Kind.FunctionCall) {
+            return call;
         }
         return undefined;
     }
@@ -272,13 +272,12 @@ class Impl extends Logger {
         return this.parseValueExpressionPrimary(lookahead);
     }
     private parseValueExpressionPrimary(lookahead: number): Success | undefined {
-        const front = this.parseValueExpressionPrimaryFront(lookahead);
+        let front = this.parseValueExpressionPrimaryFront(lookahead);
         if (front) {
-            let back: Success;
-            switch (this.peekPunctuation(front.lookahead)) {
-                case "(":
-                    back = this.expectFunctionArguments(front.lookahead);
-                    return this.success(Node.createFunctionCall(front.node.location, front.node, back.node), back.lookahead);
+            let back = this.parseValueExpressionPrimaryBack(front);
+            while (back) {
+                front = back;
+                back = this.parseValueExpressionPrimaryBack(front);
             }
         }
         return front;
@@ -290,6 +289,18 @@ class Impl extends Logger {
             ?? this.parseFloatLiteral(lookahead)
             ?? this.parseStringLiteral(lookahead)
             ?? this.parseIdentifier(lookahead);
+    }
+    private parseValueExpressionPrimaryBack(front: Success): Success | undefined {
+        let back: Success;
+        switch (this.peekPunctuation(front.lookahead)) {
+            case ".":
+                back = this.parseIdentifier(front.lookahead + 1) ?? this.throwUnexpected("Expected property n", front.lookahead + 1);
+                return this.success(Node.createPropertyGet(front.node.location, front.node, back.node), back.lookahead);
+            case "(":
+                back = this.expectFunctionArguments(front.lookahead);
+                return this.success(Node.createFunctionCall(front.node.location, front.node, back.node), back.lookahead);
+        }
+        return undefined;
     }
     private parseIdentifier(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
@@ -460,6 +471,7 @@ export namespace Parser {
         Variable = "variable",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
+        PropertyGet = "property-get",
         FunctionCall = "function-call",
         FunctionArguments = "function-arguments",
         OperatorTernary = "operator-ternary",

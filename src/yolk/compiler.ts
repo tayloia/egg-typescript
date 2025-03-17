@@ -59,6 +59,8 @@ class Impl extends Logger {
                 return new Node(pnode.location, Compiler.Kind.Identifier, [], pnode.value);
             case Parser.Kind.Literal:
                 return new Node(pnode.location, Compiler.Kind.ValueLiteral, [], pnode.value);
+            case Parser.Kind.PropertyGet:
+                return this.compileExprPropertyGet(pnode.children[0], pnode.children[1]);
             case Parser.Kind.FunctionCall:
                 return this.compileExprFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.OperatorBinary:
@@ -71,8 +73,15 @@ class Impl extends Logger {
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Compiler.Kind.ValueCall, children);
     }
+    compileExprPropertyGet(instance: Parser.Node, property: Parser.Node): Node {
+        const children = [this.compileExpr(instance), this.compileExpr(property)];
+        const location = children[0].location.span(children[1].location);
+        return new Node(location, Compiler.Kind.ValuePropertyGet, children);
+    }
     compileExprBinary(plhs: Parser.Node, op: string, prhs: Parser.Node): Node {
-        return new Node(plhs.location, Compiler.Kind.ValueOperatorBinary, [this.compileExpr(plhs), this.compileExpr(prhs)], Value.fromString(op));
+        const children = [this.compileExpr(plhs), this.compileExpr(prhs)];
+        const location = children[0].location.span(children[1].location);
+        return new Node(location, Compiler.Kind.ValueOperatorBinary, children, Value.fromString(op));
     }
     compileExprArguments(pnode: Parser.Node): Node[] {
         assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
@@ -122,6 +131,7 @@ export namespace Compiler {
         TypeKeyword = "type-keyword",
         ValueLiteral = "value-literal",
         ValueCall = "value-call",
+        ValuePropertyGet = "value-property-get",
         ValueOperatorBinary = "value-operator-binary",
     }
     export interface Node {

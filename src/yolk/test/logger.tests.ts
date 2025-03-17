@@ -2,7 +2,7 @@ import { expect } from "chai";
 
 import { TestLogger } from "./testing";
 
-describe("TestLogger", function() {
+describe("Logger", function() {
     describe("logging", function() {
         it("should log errors", function() {
             const logger = new TestLogger();

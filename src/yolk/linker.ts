@@ -118,6 +118,25 @@ class Node_LiteralIdentifier extends Node {
     }
 }
 
+class Node_ValuePropertyGet extends Node {
+    constructor(location: Program.Location, public instance: Node, public property: string) {
+        super(location);
+    }
+    resolve(resolver: Resolver): Type {
+        resolver.unimplemented();
+    }
+    evaluate(runner: Program.Runner): Value {
+        const value = this.instance.evaluate(runner);
+        if (value.kind === Value.Kind.String && this.property === "length") {
+            return Value.fromInt(value.getString().length);
+        }
+        runner.unimplemented();
+    }
+    execute(runner: Program.Runner): void {
+        runner.unimplemented();
+    }
+}
+
 class Node_TypeLiteral extends Node {
     constructor(location: Program.Location, public type: Type) {
         super(location);
@@ -138,6 +157,18 @@ class Node_ValueLiteral extends Node {
         super(location);
     }
     resolve(resolver: Resolver): Type {
+        switch (this.value.kind) {
+            case Value.Kind.Null:
+                return Type.NULL;
+            case Value.Kind.Bool:
+                return Type.BOOL;
+            case Value.Kind.Int:
+                return Type.INT;
+            case Value.Kind.Float:
+                return Type.FLOAT;
+            case Value.Kind.String:
+                return Type.STRING;
+        }
         resolver.unimplemented();
     }
     evaluate(runner_: Program.Runner): Value {
@@ -153,13 +184,13 @@ class Node_ValueCall extends Node {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
-        // WIBBLE
+        // TODO
         return Type.STRING;
     }
     evaluate(runner: Program.Runner): Value {
         const text = this.children.slice(1).map(child => child.evaluate(runner).toString()).join("");
         runner.location = this.location;
-        // WIBBLE
+        // TODO
         return Value.fromString(text);
     }
     execute(runner: Program.Runner): void {
@@ -217,26 +248,16 @@ class Impl extends Logger {
                 return new Node_LiteralIdentifier(node.location, node.value.getString());
             case Compiler.Kind.TypeKeyword:
                 assert.eq(node.children.length, 0);
-                switch (node.value.getString()) {
-                    case "void":
-                        return new Node_TypeLiteral(node.location, Type.VOID);
-                    case "bool":
-                        return new Node_TypeLiteral(node.location, Type.BOOL);
-                    case "int":
-                        return new Node_TypeLiteral(node.location, Type.INT);
-                    case "float":
-                        return new Node_TypeLiteral(node.location, Type.FLOAT);
-                    case "string":
-                        return new Node_TypeLiteral(node.location, Type.STRING);
-                }
-                assert.fail("Unknown keyword for Compiler.Kind.TypeKeywordnode in linkNode: {keyword}", {keyword:node.value.getString()});
-                break;
+                return this.linkTypeKeyword(node);
             case Compiler.Kind.ValueLiteral:
                 assert.eq(node.children.length, 0);
                 return new Node_ValueLiteral(node.location, node.value);
             case Compiler.Kind.ValueCall:
                 assert.ge(node.children.length, 1);
                 return new Node_ValueCall(node.location, this.linkNodes(node.children));
+            case Compiler.Kind.ValuePropertyGet:
+                assert.ge(node.children.length, 2);
+                return this.linkValuePropertyGet(node);
             case Compiler.Kind.ValueOperatorBinary:
                 assert.eq(node.children.length, 2);
                 return new Node_ValueOperatorBinary(node.location, this.linkNode(node.children[0]), node.value.getString(), this.linkNode(node.children[1]));
@@ -245,6 +266,31 @@ class Impl extends Logger {
     }
     linkNodes(nodes: Compiler.Node[]): Node[] {
         return nodes.map(node => this.linkNode(node));
+    }
+    linkTypeKeyword(node: Compiler.Node): Node {
+        assert(node.kind === Compiler.Kind.TypeKeyword);
+        assert.eq(node.children.length, 0);
+        const keyword = node.value.getString();
+        switch (keyword) {
+            case "void":
+                return new Node_TypeLiteral(node.location, Type.VOID);
+            case "bool":
+                return new Node_TypeLiteral(node.location, Type.BOOL);
+            case "int":
+                return new Node_TypeLiteral(node.location, Type.INT);
+            case "float":
+                return new Node_TypeLiteral(node.location, Type.FLOAT);
+            case "string":
+                return new Node_TypeLiteral(node.location, Type.STRING);
+        }
+        assert.fail("Unknown keyword for Compiler.Kind.TypeKeywordnode in linkTypeKeyword: {keyword}", {keyword});
+    }
+    linkValuePropertyGet(node: Compiler.Node): Node {
+        assert(node.kind === Compiler.Kind.ValuePropertyGet);
+        assert.eq(node.children.length, 2);
+        assert.eq(node.children[1].kind, Compiler.Kind.Identifier);
+        const property = node.children[1].value.getString();
+        return new Node_ValuePropertyGet(node.location, this.linkNode(node.children[0]), property);
     }
     linkStmtVariableDefine(node: Compiler.Node): Node {
         assert(node.kind === Compiler.Kind.StmtVariableDefine);
