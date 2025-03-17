@@ -42,6 +42,9 @@ class Impl extends Logger {
     }
     compileType(pnode: Parser.Node): Node {
         switch (pnode.kind) {
+            case Parser.Kind.TypeInfer:
+                assert.eq(pnode.children.length, 0);
+                return new Node(pnode.location, Compiler.Kind.TypeInfer, [], pnode.value);
             case Parser.Kind.TypeKeyword:
                 assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Compiler.Kind.TypeKeyword, [], pnode.value);
@@ -56,10 +59,17 @@ class Impl extends Logger {
                 return new Node(pnode.location, Compiler.Kind.Identifier, [], pnode.value);
             case Parser.Kind.Literal:
                 return new Node(pnode.location, Compiler.Kind.ValueLiteral, [], pnode.value);
+            case Parser.Kind.FunctionCall:
+                return this.compileExprFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.OperatorBinary:
                 return this.compileExprBinary(pnode.children[0], pnode.value.getString(), pnode.children[1]);
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
+    }
+    compileExprFunctionCall(callee: Parser.Node, args: Parser.Node): Node {
+        const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
+        const location = children[0].location.span(children[children.length - 1].location);
+        return new Node(location, Compiler.Kind.ValueCall, children);
     }
     compileExprBinary(plhs: Parser.Node, op: string, prhs: Parser.Node): Node {
         return new Node(plhs.location, Compiler.Kind.ValueOperatorBinary, [this.compileExpr(plhs), this.compileExpr(prhs)], Value.fromString(op));
@@ -108,8 +118,10 @@ export namespace Compiler {
         StmtVariableDeclare = "stmt-variable-declare",
         StmtVariableDefine = "stmt-variable-define",
         Identifier = "identifier",
+        TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
         ValueLiteral = "value-literal",
+        ValueCall = "value-call",
         ValueOperatorBinary = "value-operator-binary",
     }
     export interface Node {

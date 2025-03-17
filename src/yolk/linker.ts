@@ -32,10 +32,22 @@ function evaluateBinaryOperator(lhs: Value, op: string, rhs: Value): Value {
     assert.fail("Unknown binary operator: '{op}'", {op, caller:evaluateBinaryOperator});
 }
 
-abstract class Node implements Program.Node {
+class Resolver extends Logger {
+    constructor(public logger: Logger) {
+        super();
+    }
+    log(entry: Logger.Entry): void {
+        this.logger.log(entry);
+    }
+    unimplemented(): never {
+        assert.fail("Unimplemented: {caller}", {caller:this.unimplemented});
+    }
+}
+
+abstract class Node {
     constructor(public location: Program.Location) {}
+    abstract resolve(resolver: Resolver): Type;
     abstract evaluate(runner: Program.Runner): Value;
-    abstract entype(runner: Program.Runner): Type;
     abstract execute(runner: Program.Runner): void;
 }
 
@@ -43,10 +55,10 @@ class Node_Module extends Node {
     constructor(location: Program.Location, public children: Node[]) {
         super(location);
     }
-    evaluate(runner: Program.Runner): Value {
-        runner.unimplemented();
+    resolve(resolver: Resolver): Type {
+        resolver.unimplemented();
     }
-    entype(runner: Program.Runner): Type {
+    evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
     }
     execute(runner: Program.Runner): void {
@@ -57,20 +69,19 @@ class Node_Module extends Node {
 }
 
 class Node_StmtVariableDefine extends Node {
-    constructor(location: Program.Location, public name: string, public type: Node, public initializer: Node) {
+    constructor(location: Program.Location, public name: string, public type: Type, public initializer: Node) {
         super(location);
+    }
+    resolve(resolver: Resolver): Type {
+        resolver.unimplemented();
     }
     evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
     }
-    entype(runner: Program.Runner): Type {
-        runner.unimplemented();
-    }
     execute(runner: Program.Runner): void {
-        const type = this.type.entype(runner);
         const initializer = this.initializer.evaluate(runner);
         runner.location = this.initializer.location;
-        runner.variableDefine(this.name, type, initializer);
+        runner.variableDefine(this.name, this.type, initializer);
     }
 }
 
@@ -78,10 +89,10 @@ class Node_StmtCall extends Node {
     constructor(location: Program.Location, public children: Node[]) {
         super(location);
     }
-    evaluate(runner: Program.Runner): Value {
-        runner.unimplemented();
+    resolve(resolver: Resolver): Type {
+        resolver.unimplemented();
     }
-    entype(runner: Program.Runner): Type {
+    evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
     }
     execute(runner: Program.Runner): void {
@@ -95,12 +106,12 @@ class Node_LiteralIdentifier extends Node {
     constructor(location: Program.Location, public identifier: string) {
         super(location);
     }
+    resolve(resolver: Resolver): Type {
+        resolver.unimplemented();
+    }
     evaluate(runner: Program.Runner): Value {
         runner.location = this.location;
         return runner.variableGet(this.identifier);
-    }
-    entype(runner: Program.Runner): Type {
-        runner.unimplemented();
     }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
@@ -111,11 +122,11 @@ class Node_TypeLiteral extends Node {
     constructor(location: Program.Location, public type: Type) {
         super(location);
     }
+    resolve(resolver_: Resolver): Type {
+        return this.type;
+    }
     evaluate(runner: Program.Runner): Value {
         runner.unimplemented();
-    }
-    entype(runner_: Program.Runner): Type {
-        return this.type;
     }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
@@ -126,11 +137,30 @@ class Node_ValueLiteral extends Node {
     constructor(location: Program.Location, public value: Value) {
         super(location);
     }
+    resolve(resolver: Resolver): Type {
+        resolver.unimplemented();
+    }
     evaluate(runner_: Program.Runner): Value {
         return this.value;
     }
-    entype(runner: Program.Runner): Type {
+    execute(runner: Program.Runner): void {
         runner.unimplemented();
+    }
+}
+
+class Node_ValueCall extends Node {
+    constructor(location: Program.Location, public children: Node[]) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        // WIBBLE
+        return Type.STRING;
+    }
+    evaluate(runner: Program.Runner): Value {
+        const text = this.children.slice(1).map(child => child.evaluate(runner).toString()).join("");
+        runner.location = this.location;
+        // WIBBLE
+        return Value.fromString(text);
     }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
@@ -141,14 +171,14 @@ class Node_ValueOperatorBinary extends Node {
     constructor(location: Program.Location, public lhs: Node, public op: string, public rhs: Node) {
         super(location);
     }
+    resolve(resolver: Resolver): Type {
+        resolver.unimplemented();
+    }
     evaluate(runner: Program.Runner): Value {
         const lhs = this.lhs.evaluate(runner);
         const rhs = this.rhs.evaluate(runner);
         runner.location = this.location;
         return evaluateBinaryOperator(lhs, this.op, rhs);
-    }
-    entype(runner: Program.Runner): Type {
-        runner.unimplemented();
     }
     execute(runner: Program.Runner): void {
         runner.unimplemented();
@@ -156,12 +186,14 @@ class Node_ValueOperatorBinary extends Node {
 }
 
 class Module implements Program.Module {
-    constructor(public readonly root: Program.Node, public readonly source: string) {}
+    constructor(public readonly root: Node, public readonly source: string) {}
 }
 
 class Impl extends Logger {
+    resolver: Resolver;
     constructor(public modules: Module[], public logger: Logger) {
         super();
+        this.resolver = new Resolver(logger);
     }
     linkProgram(): Program {
         return new Program(this.modules);
@@ -176,7 +208,7 @@ class Impl extends Logger {
                 return new Node_Module(node.location, this.linkNodes(node.children));
             case Compiler.Kind.StmtVariableDefine:
                 assert.eq(node.children.length, 2);
-                return new Node_StmtVariableDefine(node.location, node.value.getString(), this.linkNode(node.children[0]), this.linkNode(node.children[1]));
+                return this.linkStmtVariableDefine(node);
             case Compiler.Kind.StmtCall:
                 assert.ge(node.children.length, 1);
                 return new Node_StmtCall(node.location, this.linkNodes(node.children));
@@ -202,6 +234,9 @@ class Impl extends Logger {
             case Compiler.Kind.ValueLiteral:
                 assert.eq(node.children.length, 0);
                 return new Node_ValueLiteral(node.location, node.value);
+            case Compiler.Kind.ValueCall:
+                assert.ge(node.children.length, 1);
+                return new Node_ValueCall(node.location, this.linkNodes(node.children));
             case Compiler.Kind.ValueOperatorBinary:
                 assert.eq(node.children.length, 2);
                 return new Node_ValueOperatorBinary(node.location, this.linkNode(node.children[0]), node.value.getString(), this.linkNode(node.children[1]));
@@ -210,6 +245,27 @@ class Impl extends Logger {
     }
     linkNodes(nodes: Compiler.Node[]): Node[] {
         return nodes.map(node => this.linkNode(node));
+    }
+    linkStmtVariableDefine(node: Compiler.Node): Node {
+        assert(node.kind === Compiler.Kind.StmtVariableDefine);
+        assert.eq(node.children.length, 2);
+        let type: Type;
+        let initializer: Node;
+        if (node.children[0].kind === Compiler.Kind.TypeInfer) {
+            initializer = this.linkNode(node.children[1]);
+            type = initializer.resolve(this.resolver);
+            if (node.children[0].value.getBool()) {
+                // Allow 'var?'
+                type.addPrimitive(Type.Primitive.Null);
+            } else {
+                // Disallow 'var?'
+                type.removePrimitive(Type.Primitive.Null);
+            }
+        } else {
+            type = this.linkNode(node.children[0]).resolve(this.resolver);
+            initializer = this.linkNode(node.children[1]);
+        }
+        return new Node_StmtVariableDefine(node.location, node.value.getString(), type, initializer);
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);

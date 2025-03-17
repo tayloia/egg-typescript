@@ -11,6 +11,20 @@ export class Type {
     hasNull() {
         return this.primitives.has(Type.Primitive.Null);
     }
+    addPrimitive(primitive: Type.Primitive): Type {
+        if (this.hasPrimitive(primitive)) {
+            return this;
+        }
+        return new Type(new Set(this.primitives).add(primitive));
+    }
+    removePrimitive(primitive: Type.Primitive): Type {
+        if (!this.hasPrimitive(primitive)) {
+            return this;
+        }
+        const set = new Set(this.primitives);
+        set.delete(primitive);
+        return new Type(set);
+    }
     compatible(value: Value): Value | undefined {
         // Auto-promote 'int' to 'float'
         switch (value.kind) {
