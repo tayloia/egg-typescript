@@ -83,23 +83,32 @@ class Node implements Parser.Node {
     static createVariableDefinition(location: Program.Location, name: string, type: Node, initializer: Node): Node {
         return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(name));
     }
-    static createVariableDeclaration(location: Program.Location, name: string, type: Node, initializer: Node): Node {
-        return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(name));
+    static createVariableDeclaration(location: Program.Location, name: string, type: Node): Node {
+        return new Node(location, Parser.Kind.Variable, [type], Value.fromString(name));
     }
-    static createPropertyGet(location: Program.Location, instance: Node, property: Node): Node {
-        return new Node(location, Parser.Kind.PropertyGet, [instance, property]);
+    static createPropertyAccess(instance: Node, property: Node): Node {
+        assert.eq(property.kind, Parser.Kind.Identifier);
+        const location = instance.location.span(property.location);
+        return new Node(location, Parser.Kind.PropertyAccess, [instance, property]);
     }
-    static createFunctionCall(location: Program.Location, callee: Node, fnargs: Node): Node {
+    static createIndexAccess(instance: Node, index: Node): Node {
+        const location = instance.location.span(index.location);
+        return new Node(location, Parser.Kind.IndexAccess, [instance, index]);
+    }
+    static createFunctionCall(callee: Node, fnargs: Node): Node {
         assert.eq(fnargs.kind, Parser.Kind.FunctionArguments);
+        const location = callee.location.span(fnargs.location);
         return new Node(location, Parser.Kind.FunctionCall, [callee, fnargs]);
     }
     static createFunctionArguments(location: Program.Location, nodes: Node[]): Node {
         return new Node(location, Parser.Kind.FunctionArguments, nodes);
     }
-    static createOperatorTernary(location: Program.Location, lhs: Node, mid: Node, rhs: Node, op: string): Node {
+    static createOperatorTernary(lhs: Node, mid: Node, rhs: Node, op: string): Node {
+        const location = lhs.location.span(rhs.location);
         return new Node(location, Parser.Kind.OperatorTernary, [lhs, mid, rhs], Value.fromString(op));
     }
-    static createOperatorBinary(location: Program.Location, lhs: Node, rhs: Node, op: string): Node {
+    static createOperatorBinary(lhs: Node, rhs: Node, op: string): Node {
+        const location = lhs.location.span(rhs.location);
         return new Node(location, Parser.Kind.OperatorBinary, [lhs, rhs], Value.fromString(op));
     }
     static createOperatorUnary(location: Program.Location, rhs: Node, op: string): Node {
@@ -162,7 +171,7 @@ class Impl extends Logger {
             if (identifier && this.isPunctuation(identifier.lookahead, "=")) {
                 const initializer = this.parseValueExpression(identifier.lookahead + 1);
                 if (initializer) {
-                    return this.success(Node.createVariableDefinition(identifier.node.location, identifier.node.value.getString(), type.node, initializer.node), initializer.lookahead);
+                    return this.success(Node.createVariableDefinition(identifier.node.location.span(initializer.node.location), identifier.node.value.getString(), type.node, initializer.node), initializer.lookahead);
                 }
             }
         }
@@ -176,9 +185,8 @@ class Impl extends Logger {
         return undefined;
     }
     private expectFunctionArguments(lookahead: number): Success {
-        const start = lookahead;
         assert(this.peekPunctuation(lookahead) === "(");
-        lookahead++;
+        const start = lookahead++;
         const nodes = [];
         if (this.peekPunctuation(lookahead) !== ")") {
             for (;;) {
@@ -201,6 +209,15 @@ class Impl extends Logger {
     private expectFunctionArgument(lookahead: number): Success {
         return this.parseExpression(lookahead)
             ?? this.throwUnexpected("Expected function argument", lookahead);
+    }
+    private expectIndexArgument(lookahead: number): Success {
+        assert(this.peekPunctuation(lookahead) === "[");
+        const argument = this.parseExpression(lookahead + 1) ?? this.throwUnexpected("Expected index expression", lookahead + 1);
+        if (this.peekPunctuation(argument.lookahead) !== "]") {
+            this.throwUnexpected("Expected ']' after index expression", argument.lookahead, "]");
+        }
+        argument.node.location = this.peekLocation(lookahead, argument.lookahead);
+        return this.success(argument.node, argument.lookahead + 1);
     }
     private parseExpression(lookahead: number): Success | undefined {
         return this.parseValueExpression(lookahead)
@@ -239,8 +256,7 @@ class Impl extends Logger {
             if (mid && this.isPunctuation(lhs.lookahead, ":")) {
                 const rhs = this.parseValueExpression(mid.lookahead + 1);
                 if (rhs) {
-                    const location = lhs.node.location.span(rhs.node.location);
-                    return this.success(Node.createOperatorTernary(location, lhs.node, mid.node, rhs.node, "?:"), rhs.lookahead);
+                    return this.success(Node.createOperatorTernary(lhs.node, mid.node, rhs.node, "?:"), rhs.lookahead);
                 }
             }
         }
@@ -262,8 +278,7 @@ class Impl extends Logger {
         if (this.isPunctuation(lhs.lookahead, op)) {
             const rhs = this.parseValueExpression(lhs.lookahead + op.length);
             if (rhs) {
-                const location = lhs.node.location.span(rhs.node.location);
-                return this.success(Node.createOperatorBinary(location, lhs.node, rhs.node, op), rhs.lookahead);
+                return this.success(Node.createOperatorBinary(lhs.node, rhs.node, op), rhs.lookahead);
             }
         }
         return undefined;
@@ -295,11 +310,14 @@ class Impl extends Logger {
         switch (this.peekPunctuation(front.lookahead)) {
             case ".":
                 back = this.parseIdentifier(front.lookahead + 1) ?? this.throwUnexpected("Expected property n", front.lookahead + 1);
-                return this.success(Node.createPropertyGet(front.node.location, front.node, back.node), back.lookahead);
+                return this.success(Node.createPropertyAccess(front.node, back.node), back.lookahead);
+            case "[":
+                back = this.expectIndexArgument(front.lookahead);
+                return this.success(Node.createIndexAccess(front.node, back.node), back.lookahead);
             case "(":
                 back = this.expectFunctionArguments(front.lookahead);
-                return this.success(Node.createFunctionCall(front.node.location, front.node, back.node), back.lookahead);
-        }
+                return this.success(Node.createFunctionCall(front.node, back.node), back.lookahead);
+            }
         return undefined;
     }
     private parseIdentifier(lookahead: number): Success | undefined {
@@ -471,7 +489,8 @@ export namespace Parser {
         Variable = "variable",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
-        PropertyGet = "property-get",
+        PropertyAccess = "property-access",
+        IndexAccess = "index-access",
         FunctionCall = "function-call",
         FunctionArguments = "function-arguments",
         OperatorTernary = "operator-ternary",

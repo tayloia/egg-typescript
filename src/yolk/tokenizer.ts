@@ -78,167 +78,177 @@ class InputString implements Tokenizer.Input {
     }
 }
 
-export class Tokenizer {
-    private taken: number[] = [];
+class Codepoint {
+    constructor(public codepoint: number, public line: number, public column: number) {}
+}
+
+class Peeker {
+    constructor(public input: Tokenizer.Input) {}
+    private previous: number = -1;
     private line: number = 1;
     private column: number = 1;
-    private constructor(private input: Tokenizer.Input) {}
-    private peek(lookahead: number = 0) {
+    private taken: Codepoint[] = [];
+    private next(): Codepoint {
+        const result = new Codepoint(this.input.take(), this.line, this.column);
+        if (this.previous === 0x000D && result.codepoint === 0x000A) {
+            // Collapse "\r\n" to "\n"
+        } else if (isLineSeparator(result.codepoint)) {
+            this.line++;
+            this.column = 1;
+        } else if (result.codepoint >= 0) {
+            this.column++;
+        }
+        this.previous = result.codepoint;
+        return result;
+    }
+    peek(lookahead: number) {
         // Fill the taken array with enough characters to satisfy the lookahead
         while (lookahead >= this.taken.length) {
-            this.taken.push(this.input.take());
+            this.taken.push(this.next());
         }
         return this.taken[lookahead];
     }
-    private pop(count: number = 1): string {
+    pop(count: number): string {
         assert(count > 0);
         assert(this.taken.length >= count);
-        const output = String.fromCodePoint(...this.taken.slice(0, count));
+        const output = String.fromCodePoint(...this.taken.slice(0, count).map(cp => cp.codepoint));
         this.taken = this.taken.slice(count);
         return output;
     }
+}
+
+export class Tokenizer {
+    private constructor(public peeker: Peeker) {}
     take(): Tokenizer.Token {
-        const line = this.line;
-        const column = this.column;
+        const initial = this.peeker.peek(0);
         const success = (kind: Tokenizer.Kind, raw: string, value: bigint | number | string) => {
-            return new Tokenizer.Token(kind, raw, value, line, column);
+            return new Tokenizer.Token(kind, raw, value, initial.line, initial.column);
         }
-        const fail = (message: string) => {
-            throw new Tokenizer.Exception("{location}" + message, { line: this.line, column: this.column });
+        const fail = (message: string, line: number, column: number) => {
+            throw new Tokenizer.Exception("{location}" + message, { line, column });
         }
-        let next = this.peek();
-        if (next < 0) {
-            return new Tokenizer.Token(Tokenizer.Kind.EOF, "", -1, line, column);
+        if (initial.codepoint < 0) {
+            return success(Tokenizer.Kind.EOF, "", -1);
         }
-        if (isLineSeparator(next) || isSpaceSeparator(next)) {
+        if (isLineSeparator(initial.codepoint) || isSpaceSeparator(initial.codepoint)) {
             let previous = -1;
             let count = 0;
             let value = "";
-            do {
-                if (previous === 0x000D && next === 0x000A) {
+            let next = initial;
+            for (;;) {
+                if (previous === 0x000D && next.codepoint === 0x000A) {
                     // Collapse "\r\n" to "\n"
-                } else if (isLineSeparator(next)) {
+                } else if (isLineSeparator(next.codepoint)) {
                     // Normalize all line separators to "\n"
                     value += "\n";
-                } else {
+                } else if (isSpaceSeparator(next.codepoint)) {
                     // Normalize all spaces to " "
                     value += " ";
+                } else {
+                    break;
                 }
-                previous = next;
-                next = this.peek(++count);
-            } while (isLineSeparator(next) || isSpaceSeparator(next));
-            this.column += count;
-            return success(Tokenizer.Kind.Whitespace, this.pop(count), value);
+                previous = next.codepoint;
+                next = this.peeker.peek(++count);
+            }
+            return success(Tokenizer.Kind.Whitespace, this.peeker.pop(count), value);
         }
-        if (next === 0x002F) {
+        if (initial.codepoint === 0x002F) {
             // A slash
-            if (this.peek(1) === 0x002A) {
+            if (this.peeker.peek(1).codepoint === 0x002A) {
                 // A slash followed by an asterisk
                 let previous = -1;
                 let count = 2;
                 let value = "/*";
-                this.column += 2;
-                next = this.peek(count);
+                let next = this.peeker.peek(count);
                 do {
-                    if (next < 0) {
+                    if (next.codepoint < 0) {
                         // Premature end of input (report the start of the comment)
-                        this.line = line;
-                        this.column = column;
-                        fail("Unterminated comment");
-                    } else if (previous === 0x000D && next === 0x000A) {
+                        fail("Unterminated comment", next.line, next.column);
+                    } else if (previous === 0x000D && next.codepoint === 0x000A) {
                         // Collapse "\r\n" to "\n"
-                    } else if (isLineSeparator(next)) {
+                    } else if (isLineSeparator(next.codepoint)) {
                         // Normalize all line separators to "\n"
-                        this.line++;
-                        this.column = 1;
                         value += "\n";
-                    } else if (isSpaceSeparator(next)) {
+                    } else if (isSpaceSeparator(next.codepoint)) {
                         // Normalize all spaces to " "
-                        this.column++;
                         value += " ";
                     } else {
                         // Non-whitespace characters
-                        this.column++;
-                        value += String.fromCodePoint(next);
+                        value += String.fromCodePoint(next.codepoint);
                     }
-                    previous = next;
-                    next = this.peek(++count);
-                } while (previous != 0x002A || next !== 0x002F);
-                this.column++;
-                return success(Tokenizer.Kind.Comment, this.pop(count + 1), value + "/");
+                    previous = next.codepoint;
+                    next = this.peeker.peek(++count);
+                } while (previous != 0x002A || next.codepoint !== 0x002F);
+                return success(Tokenizer.Kind.Comment, this.peeker.pop(count + 1), value + "/");
             }
-            if (this.peek(1) === 0x002F) {
+            if (this.peeker.peek(1).codepoint === 0x002F) {
                 // Two slashes
                 let count = 2;
                 let value = "//";
-                next = this.peek(count);
-                while (next >= 0) {
-                    if (isLineSeparator(next)) {
+                let next = this.peeker.peek(count);
+                while (next.codepoint >= 0) {
+                    if (isLineSeparator(next.codepoint)) {
                         // Normalize all line separators to "\n"
                         value += "\n";
                         count++;
                         break;
-                    } else if (isSpaceSeparator(next)) {
+                    } else if (isSpaceSeparator(next.codepoint)) {
                         // Normalize all spaces to " "
                         value += " ";
                     } else {
                         // Non-whitespace characters
-                        value += String.fromCodePoint(next);
+                        value += String.fromCodePoint(next.codepoint);
                     }
-                    next = this.peek(++count);
+                    next = this.peeker.peek(++count);
                 }
-                if (next === 0x000D && this.peek(count) === 0x000A) {
+                if (next.codepoint === 0x000D && this.peeker.peek(count).codepoint === 0x000A) {
                     // Collapse "\r\n" to "\n"
                     count++;
                 }
-                this.column += count;
-                return success(Tokenizer.Kind.Comment, this.pop(count), value);
+                return success(Tokenizer.Kind.Comment, this.peeker.pop(count), value);
             }
         }
-        if (isIdentifierStart(next)) {
+        if (isIdentifierStart(initial.codepoint)) {
             let count = 0;
+            let next;
             do {
-                next = this.peek(++count);
-            } while (isIdentifierStart(next) || isDigit(next) || next === 0x005F);
-            const identifier = this.pop(count);
-            this.column += count;
+                next = this.peeker.peek(++count);
+            } while (isIdentifierStart(next.codepoint) || isDigit(next.codepoint) || next.codepoint === 0x005F);
+            const identifier = this.peeker.pop(count);
             return success(Tokenizer.Kind.Identifier, identifier, identifier);
         }
-        if (isDigit(next)) {
+        if (isDigit(initial.codepoint)) {
             let count = 0;
+            let next;
             do {
-                next = this.peek(++count);
-            } while (isDigit(next));
-            if (isIdentifierStart(next) || next === 0x005F) {
-                this.column += count;
-                fail(`Invalid character in number literal: '${String.fromCodePoint(next)}'`);
+                next = this.peeker.peek(++count);
+            } while (isDigit(next.codepoint));
+            if (isIdentifierStart(next.codepoint) || next.codepoint === 0x005F) {
+                fail(`Invalid character in number literal: '${String.fromCodePoint(next.codepoint)}'`, next.line, next.column);
             }
-            if (next !== 0x002E) {
+            if (next.codepoint !== 0x002E) {
                 // No decimal point
-                const output = this.pop(count);
-                this.column += count;
+                const output = this.peeker.pop(count);
                 return success(Tokenizer.Kind.Integer, output, BigInt(output));
             }
-            next = this.peek(++count);
-            while (isDigit(next)) {
-                next = this.peek(++count);
+            next = this.peeker.peek(++count);
+            while (isDigit(next.codepoint)) {
+                next = this.peeker.peek(++count);
             }
-            const output = this.pop(count);
-            this.column += count;
+            const output = this.peeker.pop(count);
             return success(Tokenizer.Kind.Float, output, Number(output));
         }
-        if (next === 0x0022) {
+        if (initial.codepoint === 0x0022) {
             // A double quote
             let value = "";
             let count = 1;
-            this.column++;
+            let previous = initial.codepoint;
+            let next;
             for (;;) {
-                const previous = next;
-                next = this.peek(count++);
+                next = this.peeker.peek(count++);
                 if (previous === 0x005C) {
                     // Backslash
-                    this.column++;
-                    switch (next) {
+                    switch (next.codepoint) {
                         case 0x0022: // Double quote
                             value += "\"";
                             break;
@@ -247,8 +257,8 @@ export class Tokenizer {
                             break;
                         case 0x005C: // Backslash
                             value += "\\";
-                            next = -1;
-                            break;
+                            previous = -1;
+                            continue;
                         case 0x0061: // Alert
                             value += "\u0007";
                             break;
@@ -272,98 +282,86 @@ export class Tokenizer {
                             break;
                         case 0x0075: // Unicode escape
                             // \u+hhhhhh;
-                            if (this.peek(count) === 0x002B) { // Plus
+                            next = this.peeker.peek(count);
+                            if (next.codepoint === 0x002B) { // Plus
                                 let codepoint = 0;
                                 let digits = 0;
-                                next = this.peek(++count);
-                                while (next !== 0x003B) { // Semicolon
-                                    if (next < 0) {
+                                let nybble = this.peeker.peek(++count);
+                                while (nybble.codepoint !== 0x003B) { // Semicolon
+                                    if (nybble.codepoint < 0) {
                                         // Report the location of the backslash
-                                        this.column -= digits + 2;
-                                        fail("Unterminated Unicode escape sequence");
+                                        fail("Unterminated Unicode escape sequence", next.line, next.column - 2);
                                     }
-                                    this.column++;
-                                    if (next >= 0x0030 && next <= 0x0039) {
-                                        codepoint = codepoint * 16 + next - 0x0030;
-                                    } else if (next >= 0x0041 && next <= 0x0046) {
-                                        codepoint = codepoint * 16 + next - 0x0041 + 10;
-                                    } else if (next >= 0x0061 && next <= 0x0066) {
-                                        codepoint = codepoint * 16 + next - 0x0061 + 10;
+                                    if (nybble.codepoint >= 0x0030 && nybble.codepoint <= 0x0039) {
+                                        codepoint = codepoint * 16 + nybble.codepoint - 0x0030;
+                                    } else if (nybble.codepoint >= 0x0041 && nybble.codepoint <= 0x0046) {
+                                        codepoint = codepoint * 16 + nybble.codepoint - 0x0041 + 10;
+                                    } else if (nybble.codepoint >= 0x0061 && nybble.codepoint <= 0x0066) {
+                                        codepoint = codepoint * 16 + nybble.codepoint - 0x0061 + 10;
                                     } else {
-                                        fail("Invalid hexadecimal digit in Unicode escape sequence");
+                                        fail("Invalid hexadecimal digit in Unicode escape sequence", nybble.line, nybble.column);
                                     }
                                     if (++digits > 6) {
-                                        fail("Too many hexadecimal digits in Unicode escape sequence");
+                                        fail("Too many hexadecimal digits in Unicode escape sequence", nybble.line, nybble.column);
                                     }
-                                    next = this.peek(++count);
+                                    nybble = this.peeker.peek(++count);
                                 }
-                                this.column++;
                                 if (digits === 0) {
-                                    fail("Empty Unicode escape sequence");
+                                    fail("Empty Unicode escape sequence", nybble.line, nybble.column);
                                 }
                                 if (codepoint > 0x10FFFF) {
-                                    fail("Unicode codepoint out of range");
+                                    fail("Unicode codepoint out of range", nybble.line, nybble.column);
                                 }
                                 value += String.fromCodePoint(codepoint);
                                 count++;
                             } else {
                                 // Report the position of the backslash
-                                this.column -= 2;
-                                fail("Expected '+' after '\\u' in Unicode escape sequence");
+                                fail("Expected '+' after '\\u' in Unicode escape sequence", next.line, next.column - 2);
                             }
                             break;
                         case 0x0076: // Vertical tab
                             value += "\v";
                             break;
                         default:
-                            if (isLineSeparator(next)) {
+                            if (isLineSeparator(next.codepoint)) {
                                 // Multi-line string
-                                if (next === 0x000D && this.peek(count) === 0x000A) {
+                                if (next.codepoint === 0x000D && this.peeker.peek(count).codepoint === 0x000A) {
                                     // Collapse "\r\n" to "\n"
                                     count++;
                                 }
-                                this.line++;
-                                this.column = 1;
                             } else {
-                                // Report the position of the backslash
-                                this.column--;
-                                fail("Invalid string escape sequence");
+                                // Report the position after the backslash
+                                fail("Invalid string escape sequence", next.line, next.column);
                             }
                             break;
                     }
-                } else if (next === 0x0022) {
+                } else if (next.codepoint === 0x0022) {
                     // An unescaped double quote
                     break;
-                } else if (next === 0x005C) {
+                } else if (next.codepoint === 0x005C) {
                     // An unescaped backslash
-                    this.column++;
-                } else if (next < 0) {
+                } else if (next.codepoint < 0) {
                     // Premature end of input (report the location of the start)
-                    this.line = line;
-                    this.column = column;
-                    fail("Unterminated string");
-                } else if (isLineSeparator(next)) {
+                    fail("Unterminated string", next.line, next.column);
+                } else if (isLineSeparator(next.codepoint)) {
                     // Newline in string
-                    this.column--;
-                    fail("End of line within string literal");
+                    fail("End of line within string literal", next.line, next.column);
                 } else {
                     // Any other character
-                    value += String.fromCodePoint(next);
-                    this.column++;
+                    value += String.fromCodePoint(next.codepoint);
                 }
+                previous = next.codepoint;
             }
-            this.column++;
-            return success(Tokenizer.Kind.String, this.pop(count), value);
+            return success(Tokenizer.Kind.String, this.peeker.pop(count), value);
         }
-        const output = this.pop(1);
-        this.column++;
+        const output = this.peeker.pop(1);
         return success(Tokenizer.Kind.Punctuation, output, output);
     }
     static fromFile(path: fs.PathLike): Tokenizer {
-        return new Tokenizer(new InputFile(path));
+        return new Tokenizer(new Peeker(new InputFile(path)));
     }
     static fromString(text: string): Tokenizer {
-        return new Tokenizer(new InputString(text));
+        return new Tokenizer(new Peeker(new InputString(text)));
     }
 }
 

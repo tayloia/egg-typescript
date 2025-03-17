@@ -59,8 +59,10 @@ class Impl extends Logger {
                 return new Node(pnode.location, Compiler.Kind.Identifier, [], pnode.value);
             case Parser.Kind.Literal:
                 return new Node(pnode.location, Compiler.Kind.ValueLiteral, [], pnode.value);
-            case Parser.Kind.PropertyGet:
+            case Parser.Kind.PropertyAccess:
                 return this.compileExprPropertyGet(pnode.children[0], pnode.children[1]);
+            case Parser.Kind.IndexAccess:
+                return this.compileExprIndexGet(pnode.children[0], pnode.children[1]);
             case Parser.Kind.FunctionCall:
                 return this.compileExprFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.OperatorBinary:
@@ -72,6 +74,11 @@ class Impl extends Logger {
         const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Compiler.Kind.ValueCall, children);
+    }
+    compileExprIndexGet(instance: Parser.Node, index: Parser.Node): Node {
+        const children = [this.compileExpr(instance), this.compileExpr(index)];
+        const location = children[0].location.span(children[1].location);
+        return new Node(location, Compiler.Kind.ValueIndexGet, children);
     }
     compileExprPropertyGet(instance: Parser.Node, property: Parser.Node): Node {
         const children = [this.compileExpr(instance), this.compileExpr(property)];
@@ -132,6 +139,7 @@ export namespace Compiler {
         ValueLiteral = "value-literal",
         ValueCall = "value-call",
         ValuePropertyGet = "value-property-get",
+        ValueIndexGet = "value-index-get",
         ValueOperatorBinary = "value-operator-binary",
     }
     export interface Node {

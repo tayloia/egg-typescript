@@ -153,16 +153,16 @@ describe("Tokenizer", function() {
             expect(tokenizeBad(`"\\u+Z;`)).throws("(1,5): Invalid hexadecimal digit in Unicode escape sequence");
         });
         it("should reject unterminated strings", function() {
-            expect(tokenizeBad(`"`)).throws("(1,1): Unterminated string");
-            expect(tokenizeBad(`"\\t\\t\\t`)).throws("(1,1): Unterminated string");
-            expect(tokenizeBad(`"hello, world`)).throws("(1,1): Unterminated string");
-            expect(tokenizeBad(`"\\r\\n12345`)).throws("(1,1): Unterminated string");
+            expect(tokenizeBad(`"`)).throws("(1,2): Unterminated string");
+            expect(tokenizeBad(`"\\t\\t\\t`)).throws("(1,8): Unterminated string");
+            expect(tokenizeBad(`"hello, world`)).throws("(1,14): Unterminated string");
+            expect(tokenizeBad(`"\\r\\n12345`)).throws("(1,11): Unterminated string");
         });
         it("should reject end of line within strings", function() {
-            expect(tokenizeBad(`"\n`)).throws("(1,1): End of line within string literal");
-            expect(tokenizeBad(`"\\t\\t\\t\r`)).throws("(1,7): End of line within string literal");
-            expect(tokenizeBad(`"hello, world\n`)).throws("(1,13): End of line within string literal");
-            expect(tokenizeBad(`"\\r\\n12345\r\n`)).throws("(1,10): End of line within string literal");
+            expect(tokenizeBad(`"\n`)).throws("(1,2): End of line within string literal");
+            expect(tokenizeBad(`"\\t\\t\\t\r`)).throws("(1,8): End of line within string literal");
+            expect(tokenizeBad(`"hello, world\n`)).throws("(1,14): End of line within string literal");
+            expect(tokenizeBad(`"\\r\\n12345\r\n`)).throws("(1,11): End of line within string literal");
         });
     });
     describe("punctuation", function() {
@@ -184,7 +184,7 @@ describe("Tokenizer", function() {
             expect(token.value).equals(expected);
         }));
         it("should reject unterminated comments", function() {
-            expect(tokenizeBad(`/* hello`)).throws("(1,1): Unterminated comment");
+            expect(tokenizeBad(`/* hello`)).throws("(1,9): Unterminated comment");
         });
     });
     const inputs = [

@@ -1,6 +1,6 @@
 import { assert } from "./assertion";
 import { Compiler } from "./compiler";
-import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
+import { BaseException, ExceptionOrigin, ExceptionParameters, RuntimeException } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
 import { Program } from "./program";
 import { Type } from "./type";
@@ -49,6 +49,9 @@ abstract class Node {
     abstract resolve(resolver: Resolver): Type;
     abstract evaluate(runner: Program.Runner): Value;
     abstract execute(runner: Program.Runner): void;
+    raise(message: string, parameters?: ExceptionParameters): never {
+        throw new RuntimeException(message, { ...parameters, location: this.location });
+    }
 }
 
 class Node_Module extends Node {
@@ -129,6 +132,31 @@ class Node_ValuePropertyGet extends Node {
         const value = this.instance.evaluate(runner);
         if (value.kind === Value.Kind.String && this.property === "length") {
             return Value.fromInt(value.getString().length);
+        }
+        runner.unimplemented();
+    }
+    execute(runner: Program.Runner): void {
+        runner.unimplemented();
+    }
+}
+
+class Node_ValueIndexGet extends Node {
+    constructor(location: Program.Location, public instance: Node, public index: Node) {
+        super(location);
+    }
+    resolve(resolver: Resolver): Type {
+        resolver.unimplemented();
+    }
+    evaluate(runner: Program.Runner): Value {
+        const value = this.instance.evaluate(runner);
+        if (value.kind === Value.Kind.String) {
+            const index = this.index.evaluate(runner).getInt();
+            const chars = value.getString();
+            const char = chars[Number(index)];
+            if (char === undefined) {
+                this.raise("String index {index} is out of range for a string of length {length}", {index, length: chars.length});
+            }
+            return Value.fromString(char);
         }
         runner.unimplemented();
     }
@@ -258,6 +286,9 @@ class Impl extends Logger {
             case Compiler.Kind.ValuePropertyGet:
                 assert.ge(node.children.length, 2);
                 return this.linkValuePropertyGet(node);
+            case Compiler.Kind.ValueIndexGet:
+                assert.ge(node.children.length, 2);
+                return this.linkValueIndexGet(node);
             case Compiler.Kind.ValueOperatorBinary:
                 assert.eq(node.children.length, 2);
                 return new Node_ValueOperatorBinary(node.location, this.linkNode(node.children[0]), node.value.getString(), this.linkNode(node.children[1]));
@@ -291,6 +322,11 @@ class Impl extends Logger {
         assert.eq(node.children[1].kind, Compiler.Kind.Identifier);
         const property = node.children[1].value.getString();
         return new Node_ValuePropertyGet(node.location, this.linkNode(node.children[0]), property);
+    }
+    linkValueIndexGet(node: Compiler.Node): Node {
+        assert(node.kind === Compiler.Kind.ValueIndexGet);
+        assert.eq(node.children.length, 2);
+        return new Node_ValueIndexGet(node.location, this.linkNode(node.children[0]), this.linkNode(node.children[1]));
     }
     linkStmtVariableDefine(node: Compiler.Node): Node {
         assert(node.kind === Compiler.Kind.StmtVariableDefine);
