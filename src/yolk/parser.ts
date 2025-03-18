@@ -80,11 +80,23 @@ class Node implements Parser.Node {
     static createTypeKeyword(location: Program.Location, keyword: string): Node {
         return new Node(location, Parser.Kind.TypeKeyword, [], Value.fromString(keyword));
     }
-    static createVariableDefinition(location: Program.Location, name: string, type: Node, initializer: Node): Node {
-        return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(name));
+    static createVariableDefinition(location: Program.Location, identifier: string, type: Node, initializer: Node): Node {
+        return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(identifier));
     }
-    static createVariableDeclaration(location: Program.Location, name: string, type: Node): Node {
-        return new Node(location, Parser.Kind.Variable, [type], Value.fromString(name));
+    static createVariableDeclaration(location: Program.Location, identifier: string, type: Node): Node {
+        return new Node(location, Parser.Kind.Variable, [type], Value.fromString(identifier));
+    }
+    static createStatementBlock(location: Program.Location, statements: Node[]): Node {
+        return new Node(location, Parser.Kind.StatementBlock, statements);
+    }
+    static createStatementForeach(location: Program.Location, identifier: string, type: Node, expression: Node, block: Node): Node {
+        return new Node(location, Parser.Kind.StatementForeach, [type, expression, block], Value.fromString(identifier));
+    }
+    static createStatementForloop(location: Program.Location, initialization: Node, condition: Node, advance: Node, block: Node): Node {
+        return new Node(location, Parser.Kind.StatementForloop, [initialization, condition, advance, block]);
+    }
+    static createStatementNudge(location: Program.Location, op: string, target: Node): Node {
+        return new Node(location, Parser.Kind.StatementNudge, [target], Value.fromString(op));
     }
     static createPropertyAccess(instance: Node, property: Node): Node {
         assert.eq(property.kind, Parser.Kind.Identifier);
@@ -156,13 +168,34 @@ class Impl extends Logger {
         this.throwUnexpected("Expected module statement", 0);
     }
     private parseStatement(lookahead: number): Success | undefined {
-        const success = this.parseStatementSimple(lookahead);
+        let success = this.parseStatementFor(lookahead);
+        if (success) {
+            return success;
+        }
+        success = this.parseStatementSimple(lookahead);
         return success && this.expectSemicolon(success);
     }
     private parseStatementSimple(lookahead: number): Success | undefined {
         // Excluding the trailing semicolon
         return this.parseVariableDefinition(lookahead)
+            ?? this.parseStatementAction(lookahead);
+    }
+    private parseStatementAction(lookahead: number): Success | undefined {
+        // Excluding the trailing semicolon
+        return this.parseStatementNudge(lookahead, "++")
+            ?? this.parseStatementNudge(lookahead, "--")
             ?? this.parseFunctionCall(lookahead);
+    }
+    private parseStatementNudge(lookahead: number, op: string): Success | undefined {
+        // Excluding the trailing semicolon
+        if (this.isPunctuation(lookahead, op)) {
+            const target = this.parseAssignmentTarget(lookahead + 2) ?? this.throwUnexpected(`Expected assignment target after '${op}`, lookahead + 2);
+            return this.success(Node.createStatementNudge(this.peekLocation(lookahead, target.lookahead), op, target.node), target.lookahead);
+        }
+        return undefined;
+    }
+    private parseAssignmentTarget(lookahead: number): Success | undefined {
+        return this.parseValueExpressionPrimary(lookahead);
     }
     private parseVariableDefinition(lookahead: number): Success | undefined {
         const type = this.parseTypeExpressionOrVar(lookahead);
@@ -171,7 +204,7 @@ class Impl extends Logger {
             if (identifier && this.isPunctuation(identifier.lookahead, "=")) {
                 const initializer = this.parseValueExpression(identifier.lookahead + 1);
                 if (initializer) {
-                    return this.success(Node.createVariableDefinition(identifier.node.location.span(initializer.node.location), identifier.node.value.toString(), type.node, initializer.node), initializer.lookahead);
+                    return this.success(Node.createVariableDefinition(identifier.node.location.span(initializer.node.location), identifier.node.value.asString(), type.node, initializer.node), initializer.lookahead);
                 }
             }
         }
@@ -183,6 +216,59 @@ class Impl extends Logger {
             return call;
         }
         return undefined;
+    }
+    private parseStatementFor(lookahead: number): Success | undefined {
+        if (this.peekKeyword(lookahead) !== "for" || this.peekPunctuation(lookahead + 1) !== "(") {
+            return undefined;
+        }
+        const type = this.parseTypeExpressionOrVar(lookahead + 2);
+        if (type) {
+            // for ( type
+            // for ( var[?]
+            const identifier = this.parseIdentifier(type.lookahead);
+            if (identifier && this.isPunctuation(identifier.lookahead, ":")) {
+                // for ( type identifier :
+                const expression = this.parseValueExpression(identifier.lookahead + 1);
+                if (expression) {
+                    // for ( type identifier : expression
+                    if (this.peekPunctuation(expression.lookahead) !== ")") {
+                        this.throwUnexpected("Expected ')' after expression in 'foreach' statement", expression.lookahead, ")");
+                    }
+                    if (this.peekPunctuation(expression.lookahead + 1) !== "{") {
+                        this.throwUnexpected("Expected '{' after ')' in 'foreach' statement", expression.lookahead + 1, "{");
+                    }
+                    const block = this.expectStatementBlock(expression.lookahead + 1, "Expected statement within 'foreach' block");
+                    const location = this.peekLocation(lookahead, block.lookahead - 1);
+                    return this.success(Node.createStatementForeach(location, identifier.node.value.asString(), type.node, expression.node, block.node), block.lookahead);
+                }
+            }
+        }
+        const initialization = this.parseVariableDefinition(lookahead + 2) ?? this.throwUnexpected("Expected variable definition in first clause of 'for' statement", lookahead + 2);
+        let next = this.expectSemicolon(initialization).lookahead;
+        const condition = this.parseExpression(next) ?? this.throwUnexpected("Expected condition in second clause of 'for' statement", next);
+        next = this.expectSemicolon(condition).lookahead;
+        const advance = this.parseStatementAction(next) ?? this.throwUnexpected("Expected statement in third clause of 'for' statement", next);
+        if (this.peekPunctuation(advance.lookahead) !== ")") {
+            this.throwUnexpected("Expected ')' after third clause in 'for' statement", advance.lookahead, ")");
+        }
+        if (this.peekPunctuation(advance.lookahead + 1) !== "{") {
+            this.throwUnexpected("Expected '{' after ')' in 'for' statement", advance.lookahead + 1, "{");
+        }
+        const block = this.expectStatementBlock(advance.lookahead + 1, "Expected statement within 'for' block");
+        const location = this.peekLocation(lookahead, block.lookahead - 1);
+        return this.success(Node.createStatementForloop(location, initialization.node, condition.node, advance.node, block.node), block.lookahead);
+    }
+    private expectStatementBlock(lookahead: number, expectation: string): Success {
+        assert.eq(this.peekPunctuation(lookahead), "{");
+        let next = lookahead + 1;
+        const children = [];
+        while (this.peekPunctuation(next) !== "}") {
+            const child = this.parseStatement(next) ?? this.throwUnexpected(expectation, next);
+            children.push(child.node);
+            next = child.lookahead;
+        }
+        const location = this.peekLocation(lookahead, next);
+        return this.success(Node.createStatementBlock(location, children), next + 1);
     }
     private expectFunctionArguments(lookahead: number): Success {
         assert(this.peekPunctuation(lookahead) === "(");
@@ -265,7 +351,7 @@ class Impl extends Logger {
     private parseValueExpressionBinary(lookahead: number): Success | undefined {
         const lhs = this.parseValueExpressionUnary(lookahead);
         if (lhs) {
-            for (const op of ["+","-","*","/"]) {
+            for (const op of ["+","-","*","/","!=","==","<=","<",">=",">"]) {
                 const expr = this.parseValueExpressionBinaryOperator(lhs, op);
                 if (expr) {
                     return expr;
@@ -489,6 +575,12 @@ export namespace Parser {
         Variable = "variable",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
+        StatementBlock = "stmt-block",
+        StatementForeach = "stmt-foreach",
+        StatementForloop = "stmt-forloop",
+        StatementAssign = "stmt-assign",
+        StatementMutate = "stmt-mutate",
+        StatementNudge = "stmt-nudge",
         PropertyAccess = "property-access",
         IndexAccess = "index-access",
         FunctionCall = "function-call",

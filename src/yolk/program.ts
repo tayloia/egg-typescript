@@ -33,11 +33,11 @@ export namespace Program {
     }
     export abstract class Runner extends Logger {
         abstract location: Location;
-        abstract variableDeclare(name: string, type: Type): void;
-        abstract variableDefine(name: string, type: Type, initializer: Value): void;
-        abstract variableSet(name: string, value: Value): void;
-        abstract variableGet(name: string): Value;
-        abstract unimplemented(): never;
+        abstract variableDeclare(symbol: string, type: Type): void;
+        abstract variableDefine(symbol: string, type: Type, initializer: Value): void;
+        abstract variableGet(symbol: string): Value;
+        abstract variableSet(symbol: string, value: Value): void;
+        abstract variableMut(symbol: string, op: string, lazy: () => Value): Value;
     }
     export interface Node {
         execute(runner: Runner): void;
@@ -83,6 +83,13 @@ class Runner extends Program.Runner {
         }
         this.variables.define(symbol, type, compatible);
     }
+    variableGet(symbol: string): Value {
+        const entry = this.variables.find(symbol);
+        if (!entry) {
+            this.throw("Variable not found in symbol table (get): '{symbol}'", {symbol});
+        }
+        return entry.value;
+    }
     variableSet(symbol: string, value: Value): void {
         const entry = this.variables.find(symbol);
         if (entry === undefined) {
@@ -97,12 +104,16 @@ class Runner extends Program.Runner {
         }
         entry.value = compatible;
     }
-    variableGet(symbol: string): Value {
+    variableMut(symbol: string, op: string, lazy: () => Value): Value {
         const entry = this.variables.find(symbol);
-        if (!entry) {
-            this.throw("Variable not found in symbol table (get): '{symbol}'", {symbol});
+        if (entry === undefined) {
+            this.throw("Variable not found in symbol table (mut): '{symbol}'", {symbol});
         }
-        return entry.value;
+        const result = entry.value.mutate(op, lazy);
+        if (result instanceof Value) {
+            return result;
+        }
+        throw result;
     }
     unimplemented(): never {
         assert.fail("Unimplemented: {caller}", {caller:this.unimplemented});

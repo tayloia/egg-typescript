@@ -54,6 +54,40 @@ export class TestProgram extends TestLogger {
     private constructor(private input: string, private source: string) {
         super();
     }
+    private entryToOutput(entry: Logger.Entry): string {
+        const format = (prefix: string): string => {
+            const origin = entry.parameters?.origin as string | undefined;
+            if (origin) {
+                prefix = "<" + origin + ">" + prefix;
+            }
+            const location = entry.parameters?.location as Program.Location | undefined;
+            if (location) {
+                const range = (lbound: number, ubound: number): string => {
+                    return lbound < ubound ? `${lbound}-${ubound}` : `${lbound}`;
+                };
+                prefix += (location.source === this.source) ? "<RESOURCE>" : this.source;
+                prefix += `(${range(location.line0, location.line1)},${range(location.column0, location.column1)}): `;
+            }
+            return prefix + entry.format();
+        };
+        switch (entry?.severity) {
+            case Logger.Severity.Error:
+                return format("<ERROR>");
+            case Logger.Severity.Warning:
+                return format("<WARNING>");
+            case Logger.Severity.Info:
+                return format("<INFO>");
+            case Logger.Severity.Debug:
+                return format("<DEBUG>");
+            case Logger.Severity.Trace:
+                return format("<TRACE>");
+            case Logger.Severity.Print:
+                return entry.message;
+        }
+    }
+    get output(): string {
+        return this.logged.map(entry => this.entryToOutput(entry)).join("\n");
+    }
     parse(): Parser.Node {
         return Parser.fromString(this.input, this.source).withLogger(this).parse();
     }
@@ -76,41 +110,8 @@ export class TestProgram extends TestLogger {
             }
             return undefined;
         };
-        const makeActual = (index: number) => {
-            const entry = this.logged[index];
-            const format = (prefix: string): string => {
-                const origin = entry.parameters?.origin as string | undefined;
-                if (origin) {
-                    prefix = "<" + origin + ">" + prefix;
-                }
-                const location = entry.parameters?.location as Program.Location | undefined;
-                if (location) {
-                    const range = (lbound: number, ubound: number): string => {
-                        return lbound < ubound ? `${lbound}-${ubound}` : `${lbound}`;
-                    };
-                    prefix += (location.source === this.source) ? "<RESOURCE>" : this.source;
-                    prefix += `(${range(location.line0, location.line1)},${range(location.column0, location.column1)}): `;
-                }
-                return prefix + entry.format();
-            };
-            switch (entry?.severity) {
-                case Logger.Severity.Error:
-                    return format("<ERROR>");
-                case Logger.Severity.Warning:
-                    return format("<WARNING>");
-                case Logger.Severity.Info:
-                    return format("<INFO>");
-                case Logger.Severity.Debug:
-                    return format("<DEBUG>");
-                case Logger.Severity.Trace:
-                    return format("<TRACE>");
-                case Logger.Severity.Print:
-                    return entry.message;
-            }
-        };
-        const makeStack = (line: number) => {
-            return `    at script (${this.source}:${line})`;
-        }
+        const makeActual = (index: number) => this.entryToOutput(this.logged[index]);
+        const makeStack = (line: number) => `    at script (${this.source}:${line})`;
         assert(this.logged.length === 0);
         try {
             this.run();
@@ -144,6 +145,13 @@ export class TestProgram extends TestLogger {
             console.log(actual);
             Testing.fail(`Extraneous script output: '${actual}'`, actual, undefined, makeStack(line));
         }
+    }
+    expectedException(): string {
+        const match = this.input.match(/^\/\/\/<[A-Z]+><ERROR>.*\): (.*)$/m);
+        if (match) {
+            return match[1];
+        }
+        return "";
     }
     static fromFile(path: fs.PathLike): TestProgram {
         return new TestProgram(fs.readFileSync(path, "utf8"), path.toString());
