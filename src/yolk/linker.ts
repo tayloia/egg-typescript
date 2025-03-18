@@ -10,24 +10,24 @@ function evaluateBinaryOperator(lhs: Value, op: string, rhs: Value): Value {
     switch (op) {
         case "+":
             if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                return Value.fromFloat(lhs.asFloat() + rhs.asFloat());
+                return Value.fromFloat(lhs.asNumber() + rhs.asNumber());
             }
-            return Value.fromInt(lhs.getInt() + rhs.getInt());
+            return Value.fromInt(lhs.asBigint() + rhs.asBigint());
         case "-":
             if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                return Value.fromFloat(lhs.asFloat() - rhs.asFloat());
+                return Value.fromFloat(lhs.asNumber() - rhs.asNumber());
             }
-            return Value.fromInt(lhs.getInt() - rhs.getInt());
+            return Value.fromInt(lhs.asBigint() - rhs.asBigint());
         case "*":
             if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                return Value.fromFloat(lhs.asFloat() * rhs.asFloat());
+                return Value.fromFloat(lhs.asNumber() * rhs.asNumber());
             }
-            return Value.fromInt(lhs.getInt() * rhs.getInt());
+            return Value.fromInt(lhs.asBigint() * rhs.asBigint());
         case "/":
             if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                return Value.fromFloat(lhs.asFloat() / rhs.asFloat());
+                return Value.fromFloat(lhs.asNumber() / rhs.asNumber());
             }
-            return Value.fromInt(lhs.getInt() / rhs.getInt());
+            return Value.fromInt(lhs.asBigint() / rhs.asBigint());
     }
     assert.fail("Unknown binary operator: '{op}'", {op, caller:evaluateBinaryOperator});
 }
@@ -151,10 +151,10 @@ class Node_ValueIndexGet extends Node {
         const value = this.instance.evaluate(runner);
         if (value.kind === Value.Kind.String) {
             const index = this.index.evaluate(runner).getInt();
-            const chars = value.getString();
-            const char = chars[Number(index)];
-            if (char === undefined) {
-                this.raise("String index {index} is out of range for a string of length {length}", {index, length: chars.length});
+            const unicode = value.getString();
+            const char = unicode.at(index.underlying);
+            if (!char) {
+                this.raise("String index {index} is out of range for a string of length {length}", {index, length: unicode.length});
             }
             return Value.fromString(char);
         }
@@ -273,7 +273,7 @@ class Impl extends Logger {
                 return new Node_StmtCall(node.location, this.linkNodes(node.children));
             case Compiler.Kind.Identifier:
                 assert.eq(node.children.length, 0);
-                return new Node_LiteralIdentifier(node.location, node.value.getString());
+                return new Node_LiteralIdentifier(node.location, node.value.toString());
             case Compiler.Kind.TypeKeyword:
                 assert.eq(node.children.length, 0);
                 return this.linkTypeKeyword(node);
@@ -291,7 +291,7 @@ class Impl extends Logger {
                 return this.linkValueIndexGet(node);
             case Compiler.Kind.ValueOperatorBinary:
                 assert.eq(node.children.length, 2);
-                return new Node_ValueOperatorBinary(node.location, this.linkNode(node.children[0]), node.value.getString(), this.linkNode(node.children[1]));
+                return new Node_ValueOperatorBinary(node.location, this.linkNode(node.children[0]), node.value.toString(), this.linkNode(node.children[1]));
         }
         assert.fail("Unknown node kind in linkNode: {kind}", {kind:node.kind});
     }
@@ -301,7 +301,7 @@ class Impl extends Logger {
     linkTypeKeyword(node: Compiler.Node): Node {
         assert(node.kind === Compiler.Kind.TypeKeyword);
         assert.eq(node.children.length, 0);
-        const keyword = node.value.getString();
+        const keyword = node.value.toString();
         switch (keyword) {
             case "void":
                 return new Node_TypeLiteral(node.location, Type.VOID);
@@ -320,7 +320,7 @@ class Impl extends Logger {
         assert(node.kind === Compiler.Kind.ValuePropertyGet);
         assert.eq(node.children.length, 2);
         assert.eq(node.children[1].kind, Compiler.Kind.Identifier);
-        const property = node.children[1].value.getString();
+        const property = node.children[1].value.toString();
         return new Node_ValuePropertyGet(node.location, this.linkNode(node.children[0]), property);
     }
     linkValueIndexGet(node: Compiler.Node): Node {
@@ -347,7 +347,7 @@ class Impl extends Logger {
             type = this.linkNode(node.children[0]).resolve(this.resolver);
             initializer = this.linkNode(node.children[1]);
         }
-        return new Node_StmtVariableDefine(node.location, node.value.getString(), type, initializer);
+        return new Node_StmtVariableDefine(node.location, node.value.toString(), type, initializer);
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);

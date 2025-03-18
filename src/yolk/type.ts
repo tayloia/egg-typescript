@@ -40,7 +40,7 @@ export class Type {
                 break;
             case Value.Kind.Int:
                 if (this.hasPrimitive(Type.Primitive.Float)) {
-                    return Value.fromFloat(value.asFloat());
+                    return Value.fromFloat(value.asNumber());
                 }
                 if (this.hasPrimitive(Type.Primitive.Int)) {
                     return value;

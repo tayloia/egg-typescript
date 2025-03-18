@@ -171,7 +171,7 @@ class Impl extends Logger {
             if (identifier && this.isPunctuation(identifier.lookahead, "=")) {
                 const initializer = this.parseValueExpression(identifier.lookahead + 1);
                 if (initializer) {
-                    return this.success(Node.createVariableDefinition(identifier.node.location.span(initializer.node.location), identifier.node.value.getString(), type.node, initializer.node), initializer.lookahead);
+                    return this.success(Node.createVariableDefinition(identifier.node.location.span(initializer.node.location), identifier.node.value.toString(), type.node, initializer.node), initializer.lookahead);
                 }
             }
         }

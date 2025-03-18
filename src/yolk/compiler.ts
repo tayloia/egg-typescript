@@ -66,7 +66,7 @@ class Impl extends Logger {
             case Parser.Kind.FunctionCall:
                 return this.compileExprFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.OperatorBinary:
-                return this.compileExprBinary(pnode.children[0], pnode.value.getString(), pnode.children[1]);
+                return this.compileExprBinary(pnode.children[0], pnode.value.toString(), pnode.children[1]);
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
