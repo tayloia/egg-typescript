@@ -21,14 +21,12 @@ class Impl extends Logger {
         super();
     }
     compileModule(): Module {
-        const statements = this.input.children.map(child => this.compileModuleStatement(child));
-        const root = new Node(this.input.location, Compiler.Kind.Module, statements);
+        const stmts = this.input.children.map(child => this.compileStmt(child));
+        const root = new Node(this.input.location, Compiler.Kind.Module, stmts);
         return new Module(root);
     }
-    compileModuleStatement(pnode: Parser.Node): Node {
+    compileStmt(pnode: Parser.Node): Node {
         switch (pnode.kind) {
-            case Parser.Kind.FunctionCall:
-                return new Node(pnode.location, Compiler.Kind.StmtCall, [this.compileExpr(pnode.children[0]), ...this.compileExprArguments(pnode.children[1])])
             case Parser.Kind.Variable:
                 switch (pnode.children.length) {
                     case 1:
@@ -37,8 +35,34 @@ class Impl extends Logger {
                         return new Node(pnode.location, Compiler.Kind.StmtVariableDefine, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
                 }
                 assert.fail("Invalid number of children for Parser.Kind.Variable: {length}", {length:pnode.children.length});
+                // eslint-disable-next-line no-fallthrough
+            case Parser.Kind.FunctionCall:
+                return new Node(pnode.location, Compiler.Kind.StmtCall, [
+                    this.compileExpr(pnode.children[0]),
+                    ...this.compileExprArguments(pnode.children[1]),
+                ]);
+            case Parser.Kind.StatementBlock:
+                return new Node(pnode.location, Compiler.Kind.StmtBlock, pnode.children.map(child => this.compileStmt(child)));
+            case Parser.Kind.StatementNudge:
+                assert.eq(pnode.children.length, 1);
+                return new Node(pnode.location, Compiler.Kind.StmtNudge, [this.compileTarget(pnode.children[0])], pnode.value);
+            case Parser.Kind.StatementForeach:
+                assert.eq(pnode.children.length, 3);
+                return new Node(pnode.location, Compiler.Kind.StmtForeach, [
+                    this.compileType(pnode.children[0]),
+                    this.compileExpr(pnode.children[1]),
+                    this.compileStmt(pnode.children[2]),
+                ], pnode.value);
+            case Parser.Kind.StatementForloop:
+                assert.eq(pnode.children.length, 4);
+                return new Node(pnode.location, Compiler.Kind.StmtForloop, [
+                    this.compileStmt(pnode.children[0]),
+                    this.compileExpr(pnode.children[1]),
+                    this.compileStmt(pnode.children[2]),
+                    this.compileStmt(pnode.children[3]),
+                ]);
         }
-        assert.fail("Unknown node kind in compileModuleStatement: {kind}", {kind:pnode.kind});
+        assert.fail("Unknown node kind in compileStmt: {kind}", {kind:pnode.kind});
     }
     compileType(pnode: Parser.Node): Node {
         switch (pnode.kind) {
@@ -53,6 +77,13 @@ class Impl extends Logger {
         }
         assert.fail("Unknown node kind in compileType: {kind}", {kind:pnode.kind});
     }
+    compileTarget(pnode: Parser.Node): Node {
+        switch (pnode.kind) {
+            case Parser.Kind.Identifier:
+                return new Node(pnode.location, Compiler.Kind.Identifier, [], pnode.value);
+        }
+        assert.fail("Unknown node kind in compileTarget: {kind}", {kind:pnode.kind});
+    }
     compileExpr(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
@@ -66,7 +97,7 @@ class Impl extends Logger {
             case Parser.Kind.FunctionCall:
                 return this.compileExprFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.OperatorBinary:
-                return this.compileExprBinary(pnode.children[0], pnode.value.toString(), pnode.children[1]);
+                return this.compileExprBinary(pnode.children[0], pnode.value.asString(), pnode.children[1]);
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
@@ -130,7 +161,13 @@ export namespace Compiler {
     }
     export enum Kind {
         Module = "module",
+        StmtBlock = "stmt-block",
         StmtCall = "stmt-call",
+        StmtAssign = "stmt-assign",
+        StmtMutate = "stmt-mutate",
+        StmtNudge = "stmt-nudge",
+        StmtForeach = "stmt-foreach",
+        StmtForloop = "stmt-forloop",
         StmtVariableDeclare = "stmt-variable-declare",
         StmtVariableDefine = "stmt-variable-define",
         Identifier = "identifier",
