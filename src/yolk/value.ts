@@ -2,13 +2,80 @@ import { assert } from "./assertion";
 import { inspect } from "util";
 
 import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
+import { Fallible } from "./fallible";
 
 export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Objekt;
 
 export type Comparison = -1 | 0 | 1;
 
-function scalarCompare<T>(lhs: T, rhs: T): Comparison {
+type BinaryInt = (lhs: bigint, rhs: bigint) => bigint;
+type BinaryFloat = (lhs: number, rhs: number) => number;
+
+function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf: BinaryFloat): Fallible<Value> {
+    switch (lhs.kind) {
+        case Value.Kind.Int:
+            switch (rhs.kind) {
+                case Value.Kind.Int:
+                    return Fallible.success(Value.fromInt(bi(lhs.asBigint(), rhs.asBigint())));
+                case Value.Kind.Float:
+                    return Fallible.success(Value.fromFloat(bf(lhs.asNumber(), rhs.asNumber())));
+            }
+            break;
+        case Value.Kind.Float:
+            switch (rhs.kind) {
+                case Value.Kind.Int:
+                    return Fallible.success(Value.fromFloat(bf(lhs.asNumber(), rhs.asNumber())));
+                case Value.Kind.Float:
+                    return Fallible.success(Value.fromFloat(bf(lhs.asNumber(), rhs.asNumber())));
+            }
+            break;
+        default:
+            return Fallible.failure(
+                "Expected left-hand side of arithmetic operator '{op}' to be an 'int' or 'float', but instead got " + lhs.describe(),
+                {lhs, op, rhs}
+            );
+    }
+    return Fallible.failure(
+        "Expected right-hand side of arithmetic operator '{op}' to be an 'int' or 'float', but instead got " + rhs.describe(),
+        {lhs, op, rhs}
+    );
+}
+
+function compareScalar<T>(lhs: T, rhs: T): Comparison {
     return (lhs < rhs) ? -1 : (lhs > rhs) ? +1 : 0;
+}
+
+type CompareInt = (lhs: bigint, rhs: bigint) => boolean;
+type CompareFloat = (lhs: number, rhs: number) => boolean;
+
+function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, cf: CompareFloat): Fallible<Value> {
+    switch (lhs.kind) {
+        case Value.Kind.Int:
+            switch (rhs.kind) {
+                case Value.Kind.Int:
+                    return Fallible.success(Value.fromBool(ci(lhs.asBigint(), rhs.asBigint())));
+                case Value.Kind.Float:
+                    return Fallible.success(Value.fromBool(cf(lhs.asNumber(), rhs.asNumber())));
+            }
+            break;
+        case Value.Kind.Float:
+            switch (rhs.kind) {
+                case Value.Kind.Int:
+                    return Fallible.success(Value.fromBool(cf(lhs.asNumber(), rhs.asNumber())));
+                case Value.Kind.Float:
+                    return Fallible.success(Value.fromBool(cf(lhs.asNumber(), rhs.asNumber())));
+            }
+            break;
+        default:
+            return Fallible.failure(
+                "Expected left-hand side of comparison operator '{op}' to be an 'int' or 'float', but instead got " + lhs.describe(),
+                {lhs, op, rhs}
+            );
+    }
+    return Fallible.failure(
+        "Expected right-hand side of comparison operator '{op}' to be an 'int' or 'float', but instead got " + rhs.describe(),
+        {lhs, op, rhs}
+    );
 }
 
 export class Value {
@@ -97,6 +164,15 @@ export class Value {
         }
     }
     equals(that: Value): boolean {
+        if (this.kind === Value.Kind.Int && that.kind === Value.Kind.Float) {
+            return this.asNumber() === this.asNumber();
+        }
+        if (this.kind === Value.Kind.Float && that.kind === Value.Kind.Int) {
+            return this.asNumber() === this.asNumber();
+        }
+        return this.same(that);
+    }
+    same(that: Value): boolean {
         switch (this.kind) {
             case Value.Kind.Void:
                 return that.kind == Value.Kind.Void;
@@ -123,13 +199,13 @@ export class Value {
             case Value.Kind.Null:
                 return 0;
             case Value.Kind.Bool:
-                return scalarCompare(this.asBoolean(), that.asBoolean());
+                return compareScalar(this.asBoolean(), that.asBoolean());
             case Value.Kind.Int:
-                return scalarCompare(this.asBigint(), that.asBigint());
+                return compareScalar(this.asBigint(), that.asBigint());
             case Value.Kind.Float:
-                return scalarCompare(this.asNumber(), that.asNumber());
+                return compareScalar(this.asNumber(), that.asNumber());
             case Value.Kind.String:
-                return scalarCompare(this.asString(), that.asString());
+                return compareScalar(this.asString(), that.asString());
             case Value.Kind.Object:
                 assert.fail("Cannot compare object instances");
         }
@@ -180,41 +256,29 @@ export class Value {
         }
         return new Value(value, Value.Kind.String);
     }
-    static binary(lhs: Value, op: string, rhs: Value): Value {
+    static binary(lhs: Value, op: string, rhs: Value): Fallible<Value>  {
         switch (op) {
             case "+":
-                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.asNumber() + rhs.asNumber());
-                }
-                return Value.fromInt(lhs.asBigint() + rhs.asBigint());
+                return binaryArithmetic(lhs, op, rhs, (a,b)=>a+b, (a,b)=>a+b);
             case "-":
-                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.asNumber() - rhs.asNumber());
-                }
-                return Value.fromInt(lhs.asBigint() - rhs.asBigint());
+                return binaryArithmetic(lhs, op, rhs, (a,b)=>a-b, (a,b)=>a-b);
             case "*":
-                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.asNumber() * rhs.asNumber());
-                }
-                return Value.fromInt(lhs.asBigint() * rhs.asBigint());
+                return binaryArithmetic(lhs, op, rhs, (a,b)=>a*b, (a,b)=>a*b);
             case "/":
-                if (lhs.kind === Value.Kind.Float || rhs.kind === Value.Kind.Float) {
-                    return Value.fromFloat(lhs.asNumber() / rhs.asNumber());
-                }
-                return Value.fromInt(lhs.asBigint() / rhs.asBigint());
+                return binaryArithmetic(lhs, op, rhs, (a,b)=>a/b, (a,b)=>a/b);
             case "==":
-                return Value.fromBool(lhs.equals(rhs));
+                return Fallible.success(Value.fromBool(lhs.equals(rhs)));
             case "!=":
-                return Value.fromBool(!lhs.equals(rhs));
+                return Fallible.success(Value.fromBool(!lhs.equals(rhs)));
             case "<":
-                return Value.fromBool(lhs.compare(rhs) < 0);
+                return compareArithmetic(lhs, op, rhs, (a,b)=>a<b, (a,b)=>a<b);
             case "<=":
-                return Value.fromBool(lhs.compare(rhs) <= 0);
+                return compareArithmetic(lhs, op, rhs, (a,b)=>a<=b, (a,b)=>a<=b);
             case ">=":
-                return Value.fromBool(lhs.compare(rhs) >= 0);
+                return compareArithmetic(lhs, op, rhs, (a,b)=>a>=b, (a,b)=>a>=b);
             case ">":
-                return Value.fromBool(lhs.compare(rhs) > 0);
-            }
+                return compareArithmetic(lhs, op, rhs, (a,b)=>a>b, (a,b)=>a>b);
+        }
         assert.fail("Unknown binary operator: '{op}'", {op, caller:Value.binary});
     }
 }

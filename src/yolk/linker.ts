@@ -192,7 +192,6 @@ class Node_StmtForeach extends Node {
         runner.variableDeclare(this.identifier, this.type);
         const unicode = expr.getUnicode();
         for (let index = BigInt(0); index < unicode.length; ++index) {
-            console.warn("FOREACH SETTING", this.identifier, Value.fromString(unicode.at(index)));
             runner.variableSet(this.identifier, Value.fromString(unicode.at(index)));
             this.block.execute(runner);
         }
@@ -378,7 +377,7 @@ class Node_ValueOperatorBinary extends Node {
         const lhs = this.lhs.evaluate(runner);
         const rhs = this.rhs.evaluate(runner);
         runner.location = this.location;
-        return Value.binary(lhs, this.op, rhs);
+        return Value.binary(lhs, this.op, rhs).unwrap(this.location);
     }
     execute(runner: Program.Runner): void {
         this.unimplemented(runner);
@@ -474,8 +473,12 @@ class Impl extends Logger {
                 return new Node_TypeLiteral(node.location, Type.FLOAT);
             case "string":
                 return new Node_TypeLiteral(node.location, Type.STRING);
+            case "object":
+                return new Node_TypeLiteral(node.location, Type.OBJECT);
+            case "any":
+                return new Node_TypeLiteral(node.location, Type.ANY);
         }
-        assert.fail("Unknown keyword for Compiler.Kind.TypeKeywordnode in linkTypeKeyword: {keyword}", {keyword});
+        assert.fail("Unknown keyword for Compiler.Kind.TypeKeyword in linkTypeKeyword: {keyword}", {keyword});
     }
     linkValuePropertyGet(node: Compiler.Node): Node {
         assert(node.kind === Compiler.Kind.ValuePropertyGet);

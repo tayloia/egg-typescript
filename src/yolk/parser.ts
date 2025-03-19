@@ -328,6 +328,8 @@ class Impl extends Logger {
             case "int":
             case "float":
             case "string":
+            case "object":
+            case "any":
                 return this.success(Node.createTypeKeyword(this.peekLocation(lookahead), keyword), lookahead + 1);
         }
         return undefined;

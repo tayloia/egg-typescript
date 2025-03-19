@@ -73,6 +73,7 @@ export namespace Type {
         Int = "int",
         Float = "float",
         String = "string",
+        Object = "object",
     }
     export const NONE = new Type(new Set());
     export const VOID = new Type(new Set([Type.Primitive.Void]));
@@ -81,4 +82,6 @@ export namespace Type {
     export const INT = new Type(new Set([Type.Primitive.Int]));
     export const FLOAT = new Type(new Set([Type.Primitive.Float]));
     export const STRING = new Type(new Set([Type.Primitive.String]));
+    export const OBJECT = new Type(new Set([Type.Primitive.Object]));
+    export const ANY = new Type(new Set([Type.Primitive.Bool, Type.Primitive.Int, Type.Primitive.Float, Type.Primitive.String, Type.Primitive.Object]));
 }
