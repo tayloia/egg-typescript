@@ -1,3 +1,5 @@
+import { inspect } from "util";
+
 export type ExceptionParameters = Record<string, unknown>;
 
 export enum ExceptionOrigin {
@@ -27,6 +29,23 @@ export abstract class BaseException extends Error {
 }
 
 export namespace Exception {
+    export class Location {
+        constructor(public source: string, public line0: number = 1, public column0: number = 1, public line1: number = 0, public column1: number = 0) {}
+        span(that: Location): Location {
+            this.line1 = that.line1;
+            this.column1 = that.column1;
+            return this;
+        }
+        format() {
+            function range(lbound: number, ubound: number): string {
+                return lbound < ubound ? `${lbound}-${ubound}` : `${lbound}`;
+            }
+            return `${this.source}(${range(this.line0, this.line1)},${range(this.column0, this.column1)})`;
+        }
+        [inspect.custom]() {
+            return `[${this.format()}]`;
+        } ;
+    }
     export function location(source: unknown, line: unknown, column: unknown): string {
         if (column) {
             return `${source || ""}(${line},${column}): `;
@@ -57,5 +76,8 @@ export namespace Exception {
 export class RuntimeException extends BaseException {
     constructor(message: string, parameters?: ExceptionParameters) {
         super("RuntimeException", ExceptionOrigin.Runtime, message, parameters);
+    }
+    static at(location: Exception.Location, message: string, parameters?: ExceptionParameters) {
+        return new RuntimeException("{location}" + message, { ...parameters, location });
     }
 }

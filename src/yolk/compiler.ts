@@ -1,12 +1,11 @@
 import { assert } from "./assertion";
-import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
+import { BaseException, Exception, ExceptionOrigin, ExceptionParameters } from "./exception";
 import { Logger } from "./logger";
 import { Parser } from "./parser";
-import { Program } from "./program";
 import { Value } from "./value";
 
 class Node implements Compiler.Node {
-    constructor(public location: Program.Location, public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: Value = Value.VOID) {}
+    constructor(public location: Exception.Location, public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: Value = Value.VOID) {}
 }
 
 class Module implements Compiler.Module {
@@ -37,10 +36,7 @@ class Impl extends Logger {
                 assert.fail("Invalid number of children for Parser.Kind.Variable: {length}", {length:pnode.children.length});
                 // eslint-disable-next-line no-fallthrough
             case Parser.Kind.FunctionCall:
-                return new Node(pnode.location, Compiler.Kind.StmtCall, [
-                    this.compileExpr(pnode.children[0]),
-                    ...this.compileExprArguments(pnode.children[1]),
-                ]);
+                return this.compileStmtFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.StatementBlock:
                 return new Node(pnode.location, Compiler.Kind.StmtBlock, pnode.children.map(child => this.compileStmt(child)));
             case Parser.Kind.StatementNudge:
@@ -63,6 +59,12 @@ class Impl extends Logger {
                 ]);
         }
         assert.fail("Unknown node kind in compileStmt: {kind}", {kind:pnode.kind});
+    }
+    compileStmtFunctionCall(callee: Parser.Node, args: Parser.Node): Node {
+        const predicate = callee.kind === Parser.Kind.Identifier && callee.value.asString() === "assert";
+        const children = [this.compileExpr(callee), ...this.compileExprArguments(args, predicate)];
+        const location = children[0].location.span(children[children.length - 1].location);
+        return new Node(location, Compiler.Kind.StmtCall, children);
     }
     compileType(pnode: Parser.Node): Node {
         switch (pnode.kind) {
@@ -104,7 +106,7 @@ class Impl extends Logger {
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
     compileExprFunctionCall(callee: Parser.Node, args: Parser.Node): Node {
-        const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
+        const children = [this.compileExpr(callee), ...this.compileExprArguments(args, false)];
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Compiler.Kind.ValueCall, children);
     }
@@ -123,12 +125,16 @@ class Impl extends Logger {
         const location = children[0].location.span(children[1].location);
         return new Node(location, Compiler.Kind.ValueOperatorBinary, children, Value.fromString(op));
     }
-    compileExprArguments(pnode: Parser.Node): Node[] {
+    compileExprArguments(pnode: Parser.Node, predicate: boolean): Node[] {
         assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
-        return pnode.children.map(child => this.compileExprArgument(child));
+        return pnode.children.map(child => this.compileExprArgument(child, predicate));
     }
-    compileExprArgument(pnode: Parser.Node): Node {
-        return this.compileExpr(pnode);
+    compileExprArgument(pnode: Parser.Node, predicate: boolean): Node {
+        const expr = this.compileExpr(pnode);
+        if (predicate) {
+            return new Node(expr.location, Compiler.Kind.ValuePredicate, [expr]);
+        }
+        return expr;
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
@@ -180,12 +186,13 @@ export namespace Compiler {
         ValuePropertyGet = "value-property-get",
         ValueIndexGet = "value-index-get",
         ValueOperatorBinary = "value-operator-binary",
+        ValuePredicate = "value-predicate",
     }
     export interface Node {
         kind: Kind;
         children: Node[];
         value: Value;
-        location: Program.Location;
+        location: Exception.Location;
     }
     export interface Module {
         root: Node;

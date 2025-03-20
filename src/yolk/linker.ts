@@ -1,7 +1,7 @@
 import { assert } from "./assertion";
 import { Builtins } from "./builtins";
 import { Compiler } from "./compiler";
-import { BaseException, ExceptionOrigin, ExceptionParameters, RuntimeException } from "./exception";
+import { BaseException, Exception, ExceptionOrigin, ExceptionParameters, RuntimeException } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
 import { Program } from "./program";
 import { Type } from "./type";
@@ -24,14 +24,17 @@ class Resolver extends Logger {
 }
 
 abstract class Node {
-    constructor(public location: Program.Location) {}
+    constructor(public location: Exception.Location) {}
     abstract resolve(resolver: Resolver): Type;
     abstract evaluate(runner: Program.Runner): Value;
     abstract execute(runner: Program.Runner): void;
     abstract callsite(runner: Program.Runner): Program.Callsite;
     abstract mutate(runner: Program.Runner, op: string, expr: Node): void;
+    predicate(runner: Program.Runner): Value {
+        return this.evaluate(runner);
+    }
     raise(message: string, parameters?: ExceptionParameters): never {
-        throw new RuntimeException(message, { ...parameters, location: this.location });
+        throw RuntimeException.at(this.location, message, parameters);
     }
     unimplemented(that: Program.Runner | Resolver): never {
         if (that instanceof Program.Runner) {
@@ -42,7 +45,7 @@ abstract class Node {
 }
 
 class Node_Module extends Node {
-    constructor(location: Program.Location, public children: Node[]) {
+    constructor(location: Exception.Location, public children: Node[]) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -66,7 +69,7 @@ class Node_Module extends Node {
 }
 
 class Node_StmtBlock extends Node {
-    constructor(location: Program.Location, public children: Node[]) {
+    constructor(location: Exception.Location, public children: Node[]) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -90,7 +93,7 @@ class Node_StmtBlock extends Node {
 }
 
 class Node_StmtCall extends Node {
-    constructor(location: Program.Location, public children: Node[]) {
+    constructor(location: Exception.Location, public children: Node[]) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -100,9 +103,13 @@ class Node_StmtCall extends Node {
         this.unimplemented(runner);
     }
     execute(runner: Program.Runner): void {
-        const text = this.children.slice(1).map(child => child.evaluate(runner).toString()).join("");
+        const callsite = this.children[0].callsite(runner);
+        const args = new Program.Arguments();
+        for (let index = 1; index < this.children.length; ++index) {
+            args.add(this.children[index].evaluate(runner));
+        }
         runner.location = this.location;
-        runner.print(text);
+        callsite(runner, args);
     }
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
@@ -113,7 +120,7 @@ class Node_StmtCall extends Node {
 }
 
 class Node_StmtVariableDefine extends Node {
-    constructor(location: Program.Location, public identifier: string, public type: Type, public initializer: Node) {
+    constructor(location: Exception.Location, public identifier: string, public type: Type, public initializer: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -136,7 +143,7 @@ class Node_StmtVariableDefine extends Node {
 }
 
 class Node_StmtAssign extends Node {
-    constructor(location: Program.Location, public target: Node, public expr: Node) {
+    constructor(location: Exception.Location, public target: Node, public expr: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -158,7 +165,7 @@ class Node_StmtAssign extends Node {
 }
 
 class Node_StmtMutate extends Node {
-    constructor(location: Program.Location, public op: string, public target: Node, public expr: Node) {
+    constructor(location: Exception.Location, public op: string, public target: Node, public expr: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -180,7 +187,7 @@ class Node_StmtMutate extends Node {
 }
 
 class Node_StmtNudge extends Node {
-    constructor(location: Program.Location, public op: string, public target: Node) {
+    constructor(location: Exception.Location, public op: string, public target: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -202,7 +209,7 @@ class Node_StmtNudge extends Node {
 }
 
 class Node_StmtForeach extends Node {
-    constructor(location: Program.Location, public identifier: string, public type: Type, public expr: Node, public block: Node) {
+    constructor(location: Exception.Location, public identifier: string, public type: Type, public expr: Node, public block: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -232,7 +239,7 @@ class Node_StmtForeach extends Node {
 }
 
 class Node_StmtForloop extends Node {
-    constructor(location: Program.Location, public initialization: Node, public condition: Node, public advance: Node, public block: Node) {
+    constructor(location: Exception.Location, public initialization: Node, public condition: Node, public advance: Node, public block: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -261,7 +268,7 @@ class Node_StmtForloop extends Node {
 }
 
 class Node_LiteralIdentifier extends Node {
-    constructor(location: Program.Location, public identifier: string) {
+    constructor(location: Exception.Location, public identifier: string) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -275,6 +282,28 @@ class Node_LiteralIdentifier extends Node {
         this.unimplemented(runner);
     }
     callsite(runner: Program.Runner): Program.Callsite {
+        if (this.identifier === "assert") {
+            return (runner_, args) => {
+                const proxy = args.arguments[0].getProxy().underlying as {
+                    value: Value;
+                    lhs: Value;
+                    op: Value;
+                    rhs: Value;
+                    location: Exception.Location;
+                };
+                if (!proxy.value.asBoolean()) {
+                    throw new RuntimeException("{location}Assertion is untrue: {lhs} {op} {rhs}", proxy);
+                }
+                return Value.VOID;
+            };
+        }
+        if (this.identifier === "print") {
+            return (runner, args) => {
+                const text = args.arguments.map(arg => arg.toString()).join("");
+                runner.print(text);
+                return Value.VOID;
+            };
+        }
         this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op: string, expr: Node): Value {
@@ -283,7 +312,7 @@ class Node_LiteralIdentifier extends Node {
 }
 
 class Node_ValuePropertyGet extends Node {
-    constructor(location: Program.Location, public instance: Node, public property: string) {
+    constructor(location: Exception.Location, public instance: Node, public property: string) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -315,7 +344,7 @@ class Node_ValuePropertyGet extends Node {
 }
 
 class Node_ValueIndexGet extends Node {
-    constructor(location: Program.Location, public instance: Node, public index: Node) {
+    constructor(location: Exception.Location, public instance: Node, public index: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -346,7 +375,7 @@ class Node_ValueIndexGet extends Node {
 }
 
 abstract class Node_TypeLiteral extends Node {
-    constructor(location: Program.Location) {
+    constructor(location: Exception.Location) {
         super(location);
     }
     evaluate(runner: Program.Runner): Value {
@@ -361,7 +390,7 @@ abstract class Node_TypeLiteral extends Node {
 }
 
 class Node_TypeLiteral_Void extends Node_TypeLiteral {
-    constructor(location: Program.Location) {
+    constructor(location: Exception.Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -373,7 +402,7 @@ class Node_TypeLiteral_Void extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Bool extends Node_TypeLiteral {
-    constructor(location: Program.Location) {
+    constructor(location: Exception.Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -385,7 +414,7 @@ class Node_TypeLiteral_Bool extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Int extends Node_TypeLiteral {
-    constructor(location: Program.Location) {
+    constructor(location: Exception.Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -397,7 +426,7 @@ class Node_TypeLiteral_Int extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Float extends Node_TypeLiteral {
-    constructor(location: Program.Location) {
+    constructor(location: Exception.Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -409,7 +438,7 @@ class Node_TypeLiteral_Float extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_String extends Node_TypeLiteral {
-    constructor(location: Program.Location) {
+    constructor(location: Exception.Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -421,7 +450,7 @@ class Node_TypeLiteral_String extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Object extends Node_TypeLiteral {
-    constructor(location: Program.Location) {
+    constructor(location: Exception.Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -433,7 +462,7 @@ class Node_TypeLiteral_Object extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Any extends Node_TypeLiteral {
-    constructor(location: Program.Location) {
+    constructor(location: Exception.Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -445,7 +474,7 @@ class Node_TypeLiteral_Any extends Node_TypeLiteral {
 }
 
 class Node_ValueLiteral extends Node {
-    constructor(location: Program.Location, public value: Value) {
+    constructor(location: Exception.Location, public value: Value) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -478,7 +507,7 @@ class Node_ValueLiteral extends Node {
 }
 
 class Node_ValueCall extends Node {
-    constructor(location: Program.Location, public children: Node[]) {
+    constructor(location: Exception.Location, public children: Node[]) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -507,7 +536,7 @@ class Node_ValueCall extends Node {
 }
 
 class Node_ValueOperatorBinary extends Node {
-    constructor(location: Program.Location, public lhs: Node, public op: string, public rhs: Node) {
+    constructor(location: Exception.Location, public lhs: Node, public op: string, public rhs: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -518,6 +547,36 @@ class Node_ValueOperatorBinary extends Node {
         const rhs = this.rhs.evaluate(runner);
         runner.location = this.location;
         return Value.binary(lhs, this.op, rhs).unwrap(this.location);
+    }
+    execute(runner: Program.Runner): void {
+        this.unimplemented(runner);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
+    }
+    predicate(runner: Program.Runner): Value {
+        const lhs = this.lhs.evaluate(runner);
+        const rhs = this.rhs.evaluate(runner);
+        runner.location = this.location;
+        const value = Value.binary(lhs, this.op, rhs).unwrap(this.location);
+        const op = Value.fromString(this.op);
+        const location = this.location;
+        return Value.fromProxy({value, lhs, op, rhs, location});
+    }
+}
+
+class Node_ValuePredicate extends Node {
+    constructor(location: Exception.Location, public child: Node) {
+        super(location);
+    }
+    resolve(resolver: Resolver): Type {
+        this.unimplemented(resolver);
+    }
+    evaluate(runner: Program.Runner): Value {
+        return this.child.predicate(runner);
     }
     execute(runner: Program.Runner): void {
         this.unimplemented(runner);
@@ -595,7 +654,10 @@ class Impl extends Logger {
             case Compiler.Kind.ValueOperatorBinary:
                 assert.eq(node.children.length, 2);
                 return new Node_ValueOperatorBinary(node.location, this.linkNode(node.children[0]), node.value.asString(), this.linkNode(node.children[1]));
-        }
+            case Compiler.Kind.ValuePredicate:
+                assert.eq(node.children.length, 1);
+                return new Node_ValuePredicate(node.location, this.linkNode(node.children[0]));
+            }
         assert.fail("Unknown node kind in linkNode: {kind}", {kind:node.kind});
     }
     linkNodes(nodes: Compiler.Node[]): Node[] {

@@ -7,7 +7,7 @@ import { Parser } from "../parser";
 import { Program } from "../program";
 import { AssertionError } from "assertion-error";
 import { assert } from "../assertion";
-import { BaseException } from "../exception";
+import { BaseException, Exception } from "../exception";
 
 export namespace Testing {
     function basePath(mocha: Mocha.Context | Mocha.Suite, depth: number): string {
@@ -60,7 +60,7 @@ export class TestProgram extends TestLogger {
             if (origin) {
                 prefix = "<" + origin + ">" + prefix;
             }
-            const location = entry.parameters?.location as Program.Location | undefined;
+            const location = entry.parameters?.location as Exception.Location | undefined;
             if (location) {
                 const range = (lbound: number, ubound: number): string => {
                     return lbound < ubound ? `${lbound}-${ubound}` : `${lbound}`;

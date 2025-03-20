@@ -1,5 +1,4 @@
-import { ExceptionParameters, RuntimeException } from "./exception";
-import { Program } from "./program";
+import { Exception, ExceptionParameters, RuntimeException } from "./exception";
 
 export class Fallible<T> {
     public constructor(private underlying: T | RuntimeException) {}
@@ -9,7 +8,7 @@ export class Fallible<T> {
     get succeeded() {
         return !this.failed;
     }
-    unwrap(location: Program.Location): T {
+    unwrap(location: Exception.Location): T {
         if (this.underlying instanceof RuntimeException) {
             this.underlying.parameters["location"] = location;
             throw this.underlying;

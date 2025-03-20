@@ -21,7 +21,7 @@ describe("Runner", function() {
             if (expected) {
                 try {
                     test.run();
-                    expect.fail(undefined, expected, `Expected exception, but none thrown: '${expected}'`);
+                    expect.fail(undefined, expected, `Expected exception '${expected}', but none was thrown`);
                 }
                 catch (actual) {
                     if (actual instanceof BaseException) {

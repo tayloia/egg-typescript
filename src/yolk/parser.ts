@@ -1,9 +1,31 @@
 import { assert } from "./assertion";
-import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
+import { BaseException, Exception, ExceptionOrigin, ExceptionParameters } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
-import { Program } from "./program";
 import { Tokenizer } from "./tokenizer";
 import { Value } from "./value";
+
+const binaryOperatorPrecedences = new Map<string, number>([
+    // See syntax.html#binary-operator
+    ["??", 1],
+    ["||", 2],
+    ["&&", 3],
+    ["|", 4],
+    ["^", 5],
+    ["&", 6],
+    ["==", 7], ["!=", 7],
+    ["<", 8], [">", 8], ["<=", 8], [">=", 8],
+    ["<<", 9], [">>", 9], [">>>", 9],
+    ["+", 10], ["-", 10],
+    ["*", 11], ["/", 11], ["%", 11],
+]);
+
+function binaryOperatorPrecedenceString(op: string) {
+    return binaryOperatorPrecedences.get(op) ?? assert.fail("Unknown precedence for operator '{op}'", {op});
+}
+
+function binaryOperatorPrecedenceNode(pnode: Parser.Node) {
+    return (pnode.kind === Parser.Kind.OperatorBinary) ? binaryOperatorPrecedenceString(pnode.value.asString()) : 99;
+}
 
 class Token {
     constructor(public underlying: Tokenizer.Token, public previous: Tokenizer.Kind) {}
@@ -63,39 +85,39 @@ class Input {
 }
 
 class Node implements Parser.Node {
-    private constructor(public location: Program.Location, public kind: Parser.Kind, public children: Node[] = [], public value: Value = Value.VOID) {}
+    private constructor(public location: Exception.Location, public kind: Parser.Kind, public children: Node[] = [], public value: Value = Value.VOID) {}
     static createModule(source: string, children: Node[]): Node {
-        const location = new Program.Location(source);
+        const location = new Exception.Location(source);
         return new Node(location, Parser.Kind.Module, children);
     }
-    static createIdentifier(location: Program.Location, name: string): Node {
+    static createIdentifier(location: Exception.Location, name: string): Node {
         return new Node(location, Parser.Kind.Identifier, [], Value.fromString(name));
     }
-    static createLiteral(location: Program.Location, value: Value): Node {
+    static createLiteral(location: Exception.Location, value: Value): Node {
         return new Node(location, Parser.Kind.Literal, [], value);
     }
-    static createTypeInfer(location: Program.Location, nullable: boolean): Node {
+    static createTypeInfer(location: Exception.Location, nullable: boolean): Node {
         return new Node(location, Parser.Kind.TypeInfer, [], Value.fromBool(nullable));
     }
-    static createTypeKeyword(location: Program.Location, keyword: string): Node {
+    static createTypeKeyword(location: Exception.Location, keyword: string): Node {
         return new Node(location, Parser.Kind.TypeKeyword, [], Value.fromString(keyword));
     }
-    static createVariableDefinition(location: Program.Location, identifier: string, type: Node, initializer: Node): Node {
+    static createVariableDefinition(location: Exception.Location, identifier: string, type: Node, initializer: Node): Node {
         return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(identifier));
     }
-    static createVariableDeclaration(location: Program.Location, identifier: string, type: Node): Node {
+    static createVariableDeclaration(location: Exception.Location, identifier: string, type: Node): Node {
         return new Node(location, Parser.Kind.Variable, [type], Value.fromString(identifier));
     }
-    static createStatementBlock(location: Program.Location, statements: Node[]): Node {
+    static createStatementBlock(location: Exception.Location, statements: Node[]): Node {
         return new Node(location, Parser.Kind.StatementBlock, statements);
     }
-    static createStatementForeach(location: Program.Location, identifier: string, type: Node, expression: Node, block: Node): Node {
+    static createStatementForeach(location: Exception.Location, identifier: string, type: Node, expression: Node, block: Node): Node {
         return new Node(location, Parser.Kind.StatementForeach, [type, expression, block], Value.fromString(identifier));
     }
-    static createStatementForloop(location: Program.Location, initialization: Node, condition: Node, advance: Node, block: Node): Node {
+    static createStatementForloop(location: Exception.Location, initialization: Node, condition: Node, advance: Node, block: Node): Node {
         return new Node(location, Parser.Kind.StatementForloop, [initialization, condition, advance, block]);
     }
-    static createStatementNudge(location: Program.Location, op: string, target: Node): Node {
+    static createStatementNudge(location: Exception.Location, op: string, target: Node): Node {
         return new Node(location, Parser.Kind.StatementNudge, [target], Value.fromString(op));
     }
     static createPropertyAccess(instance: Node, property: Node): Node {
@@ -112,7 +134,7 @@ class Node implements Parser.Node {
         const location = callee.location.span(fnargs.location);
         return new Node(location, Parser.Kind.FunctionCall, [callee, fnargs]);
     }
-    static createFunctionArguments(location: Program.Location, nodes: Node[]): Node {
+    static createFunctionArguments(location: Exception.Location, nodes: Node[]): Node {
         return new Node(location, Parser.Kind.FunctionArguments, nodes);
     }
     static createOperatorTernary(lhs: Node, mid: Node, rhs: Node, op: string): Node {
@@ -120,10 +142,22 @@ class Node implements Parser.Node {
         return new Node(location, Parser.Kind.OperatorTernary, [lhs, mid, rhs], Value.fromString(op));
     }
     static createOperatorBinary(lhs: Node, rhs: Node, op: string): Node {
+        if (binaryOperatorPrecedenceString(op) > binaryOperatorPrecedenceNode(lhs)) {
+            const a = lhs.children[0];
+            const b = lhs.children[1];
+            const c = rhs;
+            return Node.createOperatorBinary(a, Node.createOperatorBinary(b, c, op), lhs.value.asString());
+        }
+        if (binaryOperatorPrecedenceString(op) > binaryOperatorPrecedenceNode(rhs)) {
+            const a = lhs;
+            const b = rhs.children[0];
+            const c = rhs.children[1];
+            return Node.createOperatorBinary(Node.createOperatorBinary(a, b, op), c, rhs.value.asString());
+        }
         const location = lhs.location.span(rhs.location);
         return new Node(location, Parser.Kind.OperatorBinary, [lhs, rhs], Value.fromString(op));
     }
-    static createOperatorUnary(location: Program.Location, rhs: Node, op: string): Node {
+    static createOperatorUnary(location: Exception.Location, rhs: Node, op: string): Node {
         return new Node(location, Parser.Kind.OperatorBinary, [rhs], Value.fromString(op));
     }
 }
@@ -502,7 +536,7 @@ class Impl extends Logger {
         }
         return true;
     }
-    private peekLocation(lbound: Token | number, ubound?: Token | number): Program.Location {
+    private peekLocation(lbound: Token | number, ubound?: Token | number): Exception.Location {
         const start = (lookahead: Token | number): [number, number] => {
             const token = (typeof lookahead === "number") ? this.input.peek(lookahead) : lookahead;
             return [token.line, token.column];
@@ -512,9 +546,9 @@ class Impl extends Logger {
             return [token.line, token.column + token.underlying.raw.length - 1];
         }
         if (ubound === undefined) {
-            return new Program.Location(this.input.source, ...start(lbound), ...end(lbound));
+            return new Exception.Location(this.input.source, ...start(lbound), ...end(lbound));
         }
-        return new Program.Location(this.input.source, ...start(lbound), ...end(ubound));
+        return new Exception.Location(this.input.source, ...start(lbound), ...end(ubound));
     }
     private throwUnexpected(message: string, lookahead: number, expected?: string): never {
         this.throw(this.unexpected(message, lookahead, expected));
@@ -611,7 +645,7 @@ export namespace Parser {
         OperatorUnary = "operator-unary",
     }
     export interface Node {
-        location: Program.Location;
+        location: Exception.Location;
         kind: Kind;
         children: Node[];
         value: Value;

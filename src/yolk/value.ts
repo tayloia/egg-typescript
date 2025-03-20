@@ -1,10 +1,10 @@
-import { assert } from "./assertion";
 import { inspect } from "util";
 
+import { assert } from "./assertion";
 import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
 import { Fallible } from "./fallible";
 
-export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Instance;
+export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Proxy;
 
 export type Comparison = -1 | 0 | 1;
 
@@ -80,24 +80,6 @@ function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, c
 
 export class Value {
     private constructor(public underlying: ValueUnderlying, public readonly kind: Value.Kind) {}
-    [inspect.custom](depth_: unknown, options_: unknown, inspect_: unknown) {
-        switch (this.kind) {
-            case Value.Kind.Void:
-                return "void";
-            case Value.Kind.Null:
-                return "null";
-            case Value.Kind.Bool:
-                return this.asBoolean() ? "true" : "false";
-            case Value.Kind.Int:
-                return this.asBigint().toString();
-            case Value.Kind.Float:
-                return this.asNumber().toString();
-            case Value.Kind.String:
-                return JSON.stringify(this.asString());
-            case Value.Kind.Object:
-                return "<object>";
-        }
-    }
     toString() {
         if (this.underlying !== null) {
             return this.underlying.toString();
@@ -132,9 +114,9 @@ export class Value {
         assert.eq(this.kind, Value.Kind.String);
         return this.underlying as Value.Unicode;
     }
-    getObject(): Value.Instance {
-        assert.eq(this.kind, Value.Kind.Object);
-        return this.underlying as Value.Instance;
+    getProxy(): Value.Proxy {
+        assert.eq(this.kind, Value.Kind.Proxy);
+        return this.underlying as Value.Proxy;
     }
     asBoolean(): boolean {
         return this.getBool().toBoolean();
@@ -168,7 +150,7 @@ export class Value {
                 return "a value of type 'float'";
             case Value.Kind.String:
                 return "a value of type 'string'";
-            case Value.Kind.Object:
+            case Value.Kind.Proxy:
                 return "a value of type 'object'";
         }
     }
@@ -195,8 +177,8 @@ export class Value {
                 return that.kind == Value.Kind.Float && this.getFloat().toNumber() === that.getFloat().toNumber();
             case Value.Kind.String:
                 return that.kind == Value.Kind.String && this.getUnicode().toString() === that.getUnicode().toString();
-            case Value.Kind.Object:
-                return that.kind == Value.Kind.Object && this.getObject().underlying === that.getObject().underlying;
+            case Value.Kind.Proxy:
+                return that.kind == Value.Kind.Proxy && this.getProxy().underlying === that.getProxy().underlying;
         }
     }
     compare(that: Value): Comparison {
@@ -215,7 +197,7 @@ export class Value {
                 return compareScalar(this.asNumber(), that.asNumber());
             case Value.Kind.String:
                 return compareScalar(this.asString(), that.asString());
-            case Value.Kind.Object:
+            case Value.Kind.Proxy:
                 assert.fail("Cannot compare object instances");
         }
     }
@@ -264,6 +246,9 @@ export class Value {
         }
         return new Value(value, Value.Kind.String);
     }
+    static fromProxy(value: object) {
+        return new Value(new Value.Proxy(value), Value.Kind.Proxy);
+    }
     static binary(lhs: Value, op: string, rhs: Value): Fallible<Value>  {
         switch (op) {
             case "+":
@@ -288,6 +273,24 @@ export class Value {
                 return compareArithmetic(lhs, op, rhs, (a,b)=>a>b, (a,b)=>a>b);
         }
         assert.fail("Unknown binary operator: '{op}'", {op, caller:Value.binary});
+    }
+    [inspect.custom]() {
+        switch (this.kind) {
+            case Value.Kind.Void:
+                return "void";
+            case Value.Kind.Null:
+                return "null";
+            case Value.Kind.Bool:
+                return this.asBoolean() ? "true" : "false";
+            case Value.Kind.Int:
+                return this.asBigint().toString();
+            case Value.Kind.Float:
+                return this.asNumber().toString();
+            case Value.Kind.String:
+                return JSON.stringify(this.asString());
+            case Value.Kind.Proxy:
+                return "<proxy>";
+        }
     }
 }
 
@@ -510,10 +513,10 @@ export namespace Value {
             return new Value.Unicode(unicode);
         }
     }
-    export class Instance {
+    export class Proxy {
         constructor(public underlying: object) {}
         toString() {
-            return this.underlying.toString();
+            return `${this.underlying}`;
         }
     }
     export class Exception extends BaseException {
@@ -528,7 +531,7 @@ export namespace Value {
         Int = "int",
         Float = "float",
         String = "string",
-        Object = "object",
+        Proxy = "proxy",
     }
     export const VOID = Value.fromVoid();
     export const NULL = Value.fromNull();
