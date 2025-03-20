@@ -4,6 +4,7 @@ import { Compiler } from "./compiler";
 import { BaseException, Exception, ExceptionOrigin, ExceptionParameters, RuntimeException } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
 import { Program } from "./program";
+import { ProxyPredicateBinary } from "./proxy";
 import { Type } from "./type";
 import { Value } from "./value";
 
@@ -284,10 +285,10 @@ class Node_LiteralIdentifier extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         if (this.identifier === "assert") {
             return (runner_, args) => {
-                const proxy = args.arguments[0].getProxy().underlying as {
+                const proxy = args.arguments[0].getProxy().toUnderlying() as {
                     value: Value;
                     lhs: Value;
-                    op: Value;
+                    op: string;
                     rhs: Value;
                     location: Exception.Location;
                 };
@@ -323,6 +324,9 @@ class Node_ValuePropertyGet extends Node {
         runner.location = this.location;
         if (value.kind === Value.Kind.String && this.property === "length") {
             return Value.fromInt(value.getUnicode().length);
+        }
+        if (value.kind === Value.Kind.Proxy) {
+            return value.getProxy().getProperty(this.property).unwrap(this.location);
         }
         this.unimplemented(runner);
     }
@@ -360,6 +364,11 @@ class Node_ValueIndexGet extends Node {
                 this.raise("String index {index} is out of range for a string of length {length}", {index, length: unicode.length});
             }
             return Value.fromString(char);
+        }
+        if (value.kind === Value.Kind.Proxy) {
+            const proxy = value.getProxy();
+            const index = this.index.evaluate(runner);
+            return proxy.getIndex(index).unwrap(this.index.location);
         }
         this.unimplemented(runner);
     }
@@ -473,8 +482,8 @@ class Node_TypeLiteral_Any extends Node_TypeLiteral {
     }
 }
 
-class Node_ValueLiteral extends Node {
-    constructor(location: Exception.Location, public value: Value) {
+class Node_ValueScalar extends Node {
+    constructor(location: Exception.Location, private value: Value) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -494,6 +503,28 @@ class Node_ValueLiteral extends Node {
     }
     evaluate(runner_: Program.Runner): Value {
         return this.value;
+    }
+    execute(runner: Program.Runner): void {
+        this.unimplemented(runner);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_ValueArray extends Node {
+    constructor(location: Exception.Location, private nodes: Node[]) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        return Type.OBJECT;
+    }
+    evaluate(runner: Program.Runner): Value {
+        const values = this.nodes.map(node => node.evaluate(runner));
+        return Value.fromArray(values);
     }
     execute(runner: Program.Runner): void {
         this.unimplemented(runner);
@@ -562,9 +593,7 @@ class Node_ValueOperatorBinary extends Node {
         const rhs = this.rhs.evaluate(runner);
         runner.location = this.location;
         const value = Value.binary(lhs, this.op, rhs).unwrap(this.location);
-        const op = Value.fromString(this.op);
-        const location = this.location;
-        return Value.fromProxy({value, lhs, op, rhs, location});
+        return Value.fromProxy(new ProxyPredicateBinary(value, lhs, this.op, rhs, this.location));
     }
 }
 
@@ -639,9 +668,11 @@ class Impl extends Logger {
             case Compiler.Kind.TypeKeyword:
                 assert.eq(node.children.length, 0);
                 return this.linkTypeKeyword(node);
-            case Compiler.Kind.ValueLiteral:
+            case Compiler.Kind.ValueScalar:
                 assert.eq(node.children.length, 0);
-                return new Node_ValueLiteral(node.location, node.value);
+                return new Node_ValueScalar(node.location, node.value);
+            case Compiler.Kind.ValueArray:
+                return new Node_ValueArray(node.location, this.linkNodes(node.children));
             case Compiler.Kind.ValueCall:
                 assert.ge(node.children.length, 1);
                 return new Node_ValueCall(node.location, this.linkNodes(node.children));

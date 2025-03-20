@@ -3,6 +3,7 @@ import { inspect } from "util";
 import { assert } from "./assertion";
 import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
 import { Fallible } from "./fallible";
+import { ProxyArray } from "./proxy";
 
 export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Proxy;
 
@@ -78,11 +79,18 @@ function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, c
     );
 }
 
+export class ToStringOptions {
+    quoteString?: string;
+}
+
 export class Value {
-    private constructor(public underlying: ValueUnderlying, public readonly kind: Value.Kind) {}
-    toString() {
+    private constructor(private underlying: ValueUnderlying, private _kind: Value.Kind) {}
+    get kind() {
+        return this._kind;
+    }
+    toString(options?: ToStringOptions) {
         if (this.underlying !== null) {
-            return this.underlying.toString();
+            return this.underlying.toString(options);
         }
         switch (this.kind) {
             case Value.Kind.Void:
@@ -178,7 +186,7 @@ export class Value {
             case Value.Kind.String:
                 return that.kind == Value.Kind.String && this.getUnicode().toString() === that.getUnicode().toString();
             case Value.Kind.Proxy:
-                return that.kind == Value.Kind.Proxy && this.getProxy().underlying === that.getProxy().underlying;
+                return that.kind == Value.Kind.Proxy && this.getProxy().toUnderlying() === that.getProxy().toUnderlying();
         }
     }
     compare(that: Value): Comparison {
@@ -201,18 +209,25 @@ export class Value {
                 assert.fail("Cannot compare object instances");
         }
     }
-    mutate(op: string, lazy_: () => Value): Value | Value.Exception {
+    assign(value: Value): void {
+        this.underlying = value.underlying;
+        this._kind = value.kind;
+    }
+    swap(value: Value): Value {
+        const before = new Value(this.underlying, this.kind);
+        this.assign(value);
+        return before;
+    }
+    mutate(op: string, lazy: () => Value): Value | Value.Exception {
         switch (op) {
+            case "=":
+                return this.swap(lazy());
             case "++":
-                if (this.kind !== Value.Kind.Int) {
-                    return new Value.Exception("Operator '++' can only be applied to values of type 'int'");
-                }
-                return Value.fromInt(this.getInt().underlying++);
             case "--":
                 if (this.kind !== Value.Kind.Int) {
-                    return new Value.Exception("Operator '--' can only be applied to values of type 'int'");
+                    return new Value.Exception("Operator '{op}' can only be applied to values of type 'int'", {op, caller:this.mutate});
                 }
-                return Value.fromInt(this.getInt().underlying--);
+                return Value.fromInt(this.getInt().mutate(op));
         }
         assert.fail("Unknown mutating operator: '{op}'", {op, caller:this.mutate});
     }
@@ -246,8 +261,11 @@ export class Value {
         }
         return new Value(value, Value.Kind.String);
     }
-    static fromProxy(value: object) {
-        return new Value(new Value.Proxy(value), Value.Kind.Proxy);
+    static fromProxy(value: Value.Proxy) {
+        return new Value(value, Value.Kind.Proxy);
+    }
+    static fromArray(elements: Value[]) {
+        return Value.fromProxy(new ProxyArray(elements));
     }
     static binary(lhs: Value, op: string, rhs: Value): Fallible<Value>  {
         switch (op) {
@@ -393,19 +411,19 @@ function unicodeReplaceRight(haystack: string, needle: string, replacement: stri
 
 export namespace Value {
     export class Bool {
-        constructor(public underlying: boolean) {}
+        constructor(private underlying: boolean) {}
         static format(value: boolean): string {
             return value ? "true" : "false";
         }
         toBoolean() {
             return this.underlying;
         }
-        toString() {
+        toString(options_?: ToStringOptions) {
             return Bool.format(this.underlying);
         }
     }
     export class Int {
-        constructor(public underlying: bigint) {}
+        constructor(private underlying: bigint) {}
         static format(value: bigint | number): string {
             return value.toString();
         }
@@ -415,12 +433,21 @@ export namespace Value {
         toNumber() {
             return Number(this.underlying);
         }
-        toString() {
+        toString(options_?: ToStringOptions) {
             return Int.format(this.underlying);
+        }
+        mutate(op: string, rhs_?: bigint) {
+            switch (op) {
+                case "++":
+                    return this.underlying++;
+                case "--":
+                    return this.underlying--;
+            }
+            assert.fail("Unknown integer mutate operator: '{op}'", {op});
         }
     }
     export class Float {
-        constructor(public underlying: number) {}
+        constructor(private underlying: number) {}
         static format(value: number, sigfigs: number = 12): string {
             const parts = value.toPrecision(sigfigs).split("e");
             parts[0] = parts[0].replace(/0+$/, "").replace(/\.$/, ".0");
@@ -432,12 +459,12 @@ export namespace Value {
         toNumber() {
             return this.underlying;
         }
-        toString() {
+        toString(options_?: ToStringOptions) {
             return Float.format(this.underlying);
         }
     }
     export class Unicode {
-        constructor(public underlying: Uint32Array) {}
+        constructor(private underlying: Uint32Array) {}
         get length(): bigint {
             return BigInt(this.underlying.length);
         }
@@ -505,19 +532,21 @@ export namespace Value {
         toCodepoints(): Uint32Array {
             return this.underlying;
         }
-        toString(): string {
-            return unicodeStringAll(this.underlying);
+        toString(options?: ToStringOptions): string {
+            const quote = options?.quoteString ?? "";
+            return quote + unicodeStringAll(this.underlying) + quote;
         }
         static fromString(value: string): Unicode {
             const unicode = Uint32Array.from([...value].map(ch => ch.codePointAt(0)));
             return new Value.Unicode(unicode);
         }
     }
-    export class Proxy {
-        constructor(public underlying: object) {}
-        toString() {
-            return `${this.underlying}`;
-        }
+    export interface Proxy {
+        getProperty(property: string): Fallible<Value>;
+        getIndex(index: Value): Fallible<Value>;
+        toUnderlying(): unknown;
+        toDebug(): string;
+        toString(options_?: ToStringOptions): string;
     }
     export class Exception extends BaseException {
         constructor(message: string, parameters?: ExceptionParameters) {

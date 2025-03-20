@@ -39,6 +39,12 @@ class Impl extends Logger {
                 return this.compileStmtFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.StatementBlock:
                 return new Node(pnode.location, Compiler.Kind.StmtBlock, pnode.children.map(child => this.compileStmt(child)));
+            case Parser.Kind.StatementAssign:
+                assert.eq(pnode.children.length, 2);
+                return new Node(pnode.location, Compiler.Kind.StmtAssign, [this.compileTarget(pnode.children[0]), this.compileExpr(pnode.children[1])]);
+            case Parser.Kind.StatementMutate:
+                assert.eq(pnode.children.length, 2);
+                return new Node(pnode.location, Compiler.Kind.StmtMutate, [this.compileTarget(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value);
             case Parser.Kind.StatementNudge:
                 assert.eq(pnode.children.length, 1);
                 return new Node(pnode.location, Compiler.Kind.StmtNudge, [this.compileTarget(pnode.children[0])], pnode.value);
@@ -89,18 +95,27 @@ class Impl extends Logger {
     compileExpr(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
+                assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Compiler.Kind.Identifier, [], pnode.value);
-            case Parser.Kind.Literal:
-                return new Node(pnode.location, Compiler.Kind.ValueLiteral, [], pnode.value);
+            case Parser.Kind.LiteralScalar:
+                assert.eq(pnode.children.length, 0);
+                return new Node(pnode.location, Compiler.Kind.ValueScalar, [], pnode.value);
+            case Parser.Kind.LiteralArray:
+                return new Node(pnode.location, Compiler.Kind.ValueArray, pnode.children.map(element => this.compileExpr(element)));
             case Parser.Kind.TypeKeyword:
+                assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Compiler.Kind.TypeKeyword, [], pnode.value);
             case Parser.Kind.PropertyAccess:
+                assert.eq(pnode.children.length, 2);
                 return this.compileExprPropertyGet(pnode.children[0], pnode.children[1]);
             case Parser.Kind.IndexAccess:
+                assert.eq(pnode.children.length, 2);
                 return this.compileExprIndexGet(pnode.children[0], pnode.children[1]);
             case Parser.Kind.FunctionCall:
+                assert.eq(pnode.children.length, 2);
                 return this.compileExprFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.OperatorBinary:
+                assert.eq(pnode.children.length, 2);
                 return this.compileExprBinary(pnode.children[0], pnode.value.asString(), pnode.children[1]);
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
@@ -181,7 +196,8 @@ export namespace Compiler {
         Identifier = "identifier",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
-        ValueLiteral = "value-literal",
+        ValueScalar = "value-scalar",
+        ValueArray = "value-array",
         ValueCall = "value-call",
         ValuePropertyGet = "value-property-get",
         ValueIndexGet = "value-index-get",

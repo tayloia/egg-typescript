@@ -93,8 +93,14 @@ class Node implements Parser.Node {
     static createIdentifier(location: Exception.Location, name: string): Node {
         return new Node(location, Parser.Kind.Identifier, [], Value.fromString(name));
     }
-    static createLiteral(location: Exception.Location, value: Value): Node {
-        return new Node(location, Parser.Kind.Literal, [], value);
+    static createLiteralScalar(location: Exception.Location, value: Value): Node {
+        return new Node(location, Parser.Kind.LiteralScalar, [], value);
+    }
+    static createLiteralArray(location: Exception.Location, elements: Node[]): Node {
+        return new Node(location, Parser.Kind.LiteralArray, elements);
+    }
+    static createLiteralObject(location: Exception.Location, members: Node[]): Node {
+        return new Node(location, Parser.Kind.LiteralObject, members);
     }
     static createTypeInfer(location: Exception.Location, nullable: boolean): Node {
         return new Node(location, Parser.Kind.TypeInfer, [], Value.fromBool(nullable));
@@ -116,6 +122,12 @@ class Node implements Parser.Node {
     }
     static createStatementForloop(location: Exception.Location, initialization: Node, condition: Node, advance: Node, block: Node): Node {
         return new Node(location, Parser.Kind.StatementForloop, [initialization, condition, advance, block]);
+    }
+    static createStatementAssign(location: Exception.Location, lhs: Node, rhs: Node): Node {
+        return new Node(location, Parser.Kind.StatementAssign, [lhs, rhs]);
+    }
+    static createStatementMutate(location: Exception.Location, lhs: Node, op: string, rhs: Node): Node {
+        return new Node(location, Parser.Kind.StatementMutate, [lhs, rhs], Value.fromString(op));
     }
     static createStatementNudge(location: Exception.Location, op: string, target: Node): Node {
         return new Node(location, Parser.Kind.StatementNudge, [target], Value.fromString(op));
@@ -143,16 +155,10 @@ class Node implements Parser.Node {
     }
     static createOperatorBinary(lhs: Node, rhs: Node, op: string): Node {
         if (binaryOperatorPrecedenceString(op) > binaryOperatorPrecedenceNode(lhs)) {
-            const a = lhs.children[0];
-            const b = lhs.children[1];
-            const c = rhs;
-            return Node.createOperatorBinary(a, Node.createOperatorBinary(b, c, op), lhs.value.asString());
+            return Node.createOperatorBinary(lhs.children[0], Node.createOperatorBinary(lhs.children[1], rhs, op), lhs.value.asString());
         }
         if (binaryOperatorPrecedenceString(op) > binaryOperatorPrecedenceNode(rhs)) {
-            const a = lhs;
-            const b = rhs.children[0];
-            const c = rhs.children[1];
-            return Node.createOperatorBinary(Node.createOperatorBinary(a, b, op), c, rhs.value.asString());
+            return Node.createOperatorBinary(Node.createOperatorBinary(lhs, rhs.children[0], op), rhs.children[1], rhs.value.asString());
         }
         const location = lhs.location.span(rhs.location);
         return new Node(location, Parser.Kind.OperatorBinary, [lhs, rhs], Value.fromString(op));
@@ -195,11 +201,8 @@ class Impl extends Logger {
         return Node.createModule(this.input.source, children);
     }
     private expectModuleStatement(): Node {
-        const statement = this.parseStatement(0);
-        if (statement) {
-            return this.commit(statement);
-        };
-        this.throwUnexpected("Expected module statement", 0);
+        const statement = this.parseStatement(0) ?? this.throwUnexpected("Expected module statement", 0);
+        return this.commit(statement);
     }
     private parseStatement(lookahead: number): Success | undefined {
         let success = this.parseStatementFor(lookahead);
@@ -216,9 +219,31 @@ class Impl extends Logger {
     }
     private parseStatementAction(lookahead: number): Success | undefined {
         // Excluding the trailing semicolon
-        return this.parseStatementNudge(lookahead, "++")
+        return this.parseStatementAssignOrMutate(lookahead)
+            ?? this.parseStatementNudge(lookahead, "++")
             ?? this.parseStatementNudge(lookahead, "--")
             ?? this.parseFunctionCall(lookahead);
+    }
+    private parseStatementAssignOrMutate(lookahead: number): Success | undefined {
+        // Excluding the trailing semicolon
+        const target = this.parseAssignmentTarget(lookahead);
+        if (target) {
+            if (this.isPunctuation(target.lookahead, "==")) {
+                this.unexpected("Expected assignment operator like '='", target.lookahead);
+            }
+            if (this.isPunctuation(target.lookahead, "=")) {
+                const expr = this.parseExpression(target.lookahead + 1) ?? this.throwUnexpected("Expected expression after assignment '=' operator", target.lookahead + 1);
+                return this.success(Node.createStatementAssign(this.peekLocation(lookahead, expr.lookahead), target.node, expr.node), expr.lookahead);
+            }
+            for (const op of ["+=","-=","/=","%=","<<=",">>=",">>>=","&=","|=","^=","&&=","||=","??="]) {
+                if (this.isPunctuation(target.lookahead, op)) {
+                    const next = target.lookahead + op.length;
+                    const expr = this.parseExpression(next) ?? this.throwUnexpected(`Expected expression after mutation '${op}' operator`, next);
+                    return this.success(Node.createStatementMutate(this.peekLocation(lookahead, expr.lookahead), target.node, op, expr.node), expr.lookahead);
+                }
+            }
+        }
+        return undefined;
     }
     private parseStatementNudge(lookahead: number, op: string): Success | undefined {
         // Excluding the trailing semicolon
@@ -236,10 +261,8 @@ class Impl extends Logger {
         if (type) {
             const identifier = this.parseIdentifier(type.lookahead);
             if (identifier && this.isPunctuation(identifier.lookahead, "=")) {
-                const initializer = this.parseValueExpression(identifier.lookahead + 1);
-                if (initializer) {
-                    return this.success(Node.createVariableDefinition(identifier.node.location.span(initializer.node.location), identifier.node.value.asString(), type.node, initializer.node), initializer.lookahead);
-                }
+                const initializer = this.parseValueExpression(identifier.lookahead + 1) ?? this.throwUnexpected("Expected variable initializer after '='", identifier.lookahead + 1);
+                return this.success(Node.createVariableDefinition(identifier.node.location.span(initializer.node.location), identifier.node.value.asString(), type.node, initializer.node), initializer.lookahead);
             }
         }
         return undefined;
@@ -425,6 +448,7 @@ class Impl extends Logger {
             ?? this.parseIntegerLiteral(lookahead)
             ?? this.parseFloatLiteral(lookahead)
             ?? this.parseStringLiteral(lookahead)
+            ?? this.parseArrayLiteral(lookahead)
             ?? this.parseTypeKeyword(lookahead)
             ?? this.parseIdentifier(lookahead);
     }
@@ -453,7 +477,7 @@ class Impl extends Logger {
     }
     private parseNullLiteral(lookahead: number): Success | undefined {
         if (this.peekKeyword(lookahead) === "null") {
-            const node = Node.createLiteral(this.peekLocation(lookahead), Value.NULL);
+            const node = Node.createLiteralScalar(this.peekLocation(lookahead), Value.NULL);
             return this.success(node, lookahead + 1);
         }
         return undefined;
@@ -461,16 +485,16 @@ class Impl extends Logger {
     private parseBooleanLiteral(lookahead: number): Success | undefined {
         switch (this.peekKeyword(lookahead)) {
             case "false":
-                return this.success(Node.createLiteral(this.peekLocation(lookahead), Value.FALSE), lookahead + 1);
+                return this.success(Node.createLiteralScalar(this.peekLocation(lookahead), Value.FALSE), lookahead + 1);
             case "true":
-                return this.success(Node.createLiteral(this.peekLocation(lookahead), Value.TRUE), lookahead + 1);
+                return this.success(Node.createLiteralScalar(this.peekLocation(lookahead), Value.TRUE), lookahead + 1);
             }
         return undefined;
     }
     private parseIntegerLiteral(lookahead: number): Success | undefined {
         let token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Integer) {
-            const node = Node.createLiteral(this.peekLocation(token), Value.fromInt(token.value as bigint));
+            const node = Node.createLiteralScalar(this.peekLocation(token), Value.fromInt(token.value as bigint));
             return this.success(node, lookahead + 1);
         }
         if (token.kind === Tokenizer.Kind.Punctuation && token.value === "-") {
@@ -478,7 +502,7 @@ class Impl extends Logger {
             if (token.kind === Tokenizer.Kind.Integer && token.previous === Tokenizer.Kind.Punctuation) {
                 const location = this.peekLocation(token);
                 location.column0--;
-                const node = Node.createLiteral(location, Value.fromInt(-token.value as bigint));
+                const node = Node.createLiteralScalar(location, Value.fromInt(-token.value as bigint));
                 return this.success(node, lookahead + 2);
             }
         }
@@ -487,7 +511,7 @@ class Impl extends Logger {
     private parseFloatLiteral(lookahead: number): Success | undefined {
         let token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Float) {
-            const node = Node.createLiteral(this.peekLocation(token), Value.fromFloat(token.value as number));
+            const node = Node.createLiteralScalar(this.peekLocation(token), Value.fromFloat(token.value as number));
             return this.success(node, lookahead + 1);
         }
         if (token.kind === Tokenizer.Kind.Punctuation && token.value === "-") {
@@ -495,7 +519,7 @@ class Impl extends Logger {
             if (token.kind === Tokenizer.Kind.Float && token.previous === Tokenizer.Kind.Punctuation) {
                 const location = this.peekLocation(token);
                 location.column0--;
-                const node = Node.createLiteral(location, Value.fromFloat(-token.value as number));
+                const node = Node.createLiteralScalar(location, Value.fromFloat(-token.value as number));
                 return this.success(node, lookahead + 2);
             }
         }
@@ -504,10 +528,34 @@ class Impl extends Logger {
     private parseStringLiteral(lookahead: number): Success | undefined {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.String) {
-            const node = Node.createLiteral(this.peekLocation(token), Value.fromString(token.value as string));
+            const node = Node.createLiteralScalar(this.peekLocation(token), Value.fromString(token.value as string));
             return this.success(node, lookahead + 1);
         }
         return undefined;
+    }
+    private parseArrayLiteral(lookahead: number): Success | undefined {
+        if (this.peekPunctuation(lookahead) !== "[") {
+            return undefined;
+        }
+        const start = lookahead++;
+        const nodes = [];
+        if (this.peekPunctuation(lookahead) !== "]") {
+            for (;;) {
+                const element = this.parseExpression(lookahead) ?? this.throwUnexpected("Expected array element expression", lookahead);
+                nodes.push(element.node);
+                lookahead = element.lookahead;
+                const punctuation = this.peekPunctuation(lookahead);
+                if (punctuation === ",") {
+                    lookahead++;
+                } else if (punctuation === "]") {
+                    break;
+                } else {
+                    this.throwUnexpected("Expected ',' or ']' after array element argument", lookahead);
+                }
+            }
+        }
+        assert(this.peekPunctuation(lookahead) === "]");
+        return this.success(Node.createLiteralArray(this.peekLocation(start, lookahead), nodes), lookahead + 1);
     }
     private expectSemicolon(success: Success): Success {
         if (this.peekPunctuation(success.lookahead) === ";") {
@@ -626,7 +674,9 @@ export namespace Parser {
     export enum Kind {
         Module = "module",
         Identifier = "identifier",
-        Literal = "literal",
+        LiteralScalar = "literal-scalar",
+        LiteralArray = "literal-array",
+        LiteralObject = "literal-object",
         Variable = "variable",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",

@@ -56,6 +56,12 @@ export class Type {
                     return value;
                 }
                 break;
+            case Value.Kind.Proxy:
+                // TODO
+                if (this.hasPrimitive(Type.Primitive.Object)) {
+                    return value;
+                }
+                break;
         }
         return undefined;
     }
