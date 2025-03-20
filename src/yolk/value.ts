@@ -4,9 +4,13 @@ import { inspect } from "util";
 import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
 import { Fallible } from "./fallible";
 
-export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Objekt;
+export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Instance;
 
 export type Comparison = -1 | 0 | 1;
+
+export function compareScalar<T>(lhs: T, rhs: T): Comparison {
+    return (lhs < rhs) ? -1 : (lhs > rhs) ? +1 : 0;
+}
 
 type BinaryInt = (lhs: bigint, rhs: bigint) => bigint;
 type BinaryFloat = (lhs: number, rhs: number) => number;
@@ -39,10 +43,6 @@ function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf:
         "Expected right-hand side of arithmetic operator '{op}' to be an 'int' or 'float', but instead got " + rhs.describe(),
         {lhs, op, rhs}
     );
-}
-
-function compareScalar<T>(lhs: T, rhs: T): Comparison {
-    return (lhs < rhs) ? -1 : (lhs > rhs) ? +1 : 0;
 }
 
 type CompareInt = (lhs: bigint, rhs: bigint) => boolean;
@@ -99,7 +99,16 @@ export class Value {
         }
     }
     toString() {
-        return this.underlying?.toString();
+        if (this.underlying !== null) {
+            return this.underlying.toString();
+        }
+        switch (this.kind) {
+            case Value.Kind.Void:
+                return "void";
+            case Value.Kind.Null:
+                return "null";
+        }
+        assert.fail("Cannot convert value to string: " + JSON.stringify(this));
     }
     isVoid(): boolean {
         return this.kind === Value.Kind.Void;
@@ -123,24 +132,24 @@ export class Value {
         assert.eq(this.kind, Value.Kind.String);
         return this.underlying as Value.Unicode;
     }
-    getObject(): Value.Objekt {
+    getObject(): Value.Instance {
         assert.eq(this.kind, Value.Kind.Object);
-        return this.underlying as Value.Objekt;
+        return this.underlying as Value.Instance;
     }
     asBoolean(): boolean {
-        return this.getBool().underlying;
+        return this.getBool().toBoolean();
     }
     asBigint(): bigint {
         if (this.kind === Value.Kind.Float) {
-            return BigInt(this.getFloat().underlying);
+            return this.getFloat().toBigint();
         }
-        return this.getInt().underlying;
+        return this.getInt().toBigint();
     }
     asNumber(): number {
         if (this.kind === Value.Kind.Float) {
-            return this.getFloat().underlying;
+            return this.getFloat().toNumber();
         }
-        return Number(this.getInt().underlying);
+        return this.getInt().toNumber();
     }
     asString(): string {
         return this.getUnicode().toString();
@@ -152,7 +161,7 @@ export class Value {
             case Value.Kind.Null:
                 return "'null'";
             case Value.Kind.Bool:
-                return this.getBool().underlying ? "'true'" : "'false'";
+                return this.asBoolean() ? "'true'" : "'false'";
             case Value.Kind.Int:
                 return "a value of type 'int'";
             case Value.Kind.Float:
@@ -179,11 +188,11 @@ export class Value {
             case Value.Kind.Null:
                 return that.kind == Value.Kind.Null;
             case Value.Kind.Bool:
-                return that.kind == Value.Kind.Bool && this.getBool().underlying === that.getBool().underlying;
+                return that.kind == Value.Kind.Bool && this.asBoolean() === that.asBoolean();
             case Value.Kind.Int:
-                return that.kind == Value.Kind.Int && this.getInt().underlying === that.getInt().underlying;
+                return that.kind == Value.Kind.Int && this.getInt().toBigint() === that.getInt().toBigint();
             case Value.Kind.Float:
-                return that.kind == Value.Kind.Float && this.getFloat().underlying === that.getFloat().underlying;
+                return that.kind == Value.Kind.Float && this.getFloat().toNumber() === that.getFloat().toNumber();
             case Value.Kind.String:
                 return that.kind == Value.Kind.String && this.getUnicode().toString() === that.getUnicode().toString();
             case Value.Kind.Object:
@@ -251,8 +260,7 @@ export class Value {
     }
     static fromString(value: Value.Unicode | string) {
         if (typeof value === "string") {
-            const unicode = Uint32Array.from([...value].map(ch => ch.codePointAt(0)));
-            value = new Value.Unicode(unicode);
+            value = Value.Unicode.fromString(value);
         }
         return new Value(value, Value.Kind.String);
     }
@@ -283,25 +291,129 @@ export class Value {
     }
 }
 
-function unicodeStringAt(codepoints: Uint32Array, index: number) {
+function unicodeStringAt(codepoints: Uint32Array, index: number): string {
     return String.fromCodePoint(codepoints[index]);
 }
 
-function unicodeStringAll(codepoints: Uint32Array) {
+function unicodeStringAll(codepoints: Uint32Array): string {
     return String.fromCodePoint(...codepoints);
+}
+
+function unicodeCompareTo(lhs: Uint32Array, rhs: Uint32Array): Comparison {
+    const count = Math.max(lhs.length, rhs.length);
+    let comparison: Comparison = 0;
+    for (let index = 0; comparison === 0 && index < count; ++index) {
+        comparison = compareScalar(lhs[index], rhs[index]);
+    }
+    return comparison || compareScalar(lhs.length, rhs.length);
+}
+
+function unicodeStartsWith(haystack: Uint32Array, needle: Uint32Array): boolean {
+    if (haystack.length < needle.length) {
+        return false;
+    }
+    for (let index = 0; index < needle.length; ++index) {
+        if (haystack[index] !== needle[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function unicodeEndsWith(haystack: Uint32Array, needle: Uint32Array): boolean {
+    const offset = haystack.length - needle.length;
+    if (offset < 0) {
+        return false;
+    }
+    for (let index = 0; index < needle.length; ++index) {
+        if (haystack[index + offset] !== needle[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function unicodeIndex(codepoints: Uint32Array, offset: number): number {
+    if (offset <= 0) {
+        return offset;
+    }
+    let index = 0;
+    while (offset > 0) {
+        offset -= (codepoints[index++] > 0xFFFF) ? 2 : 1;
+    }
+    assert.eq(offset, 0);
+    return index;
+}
+
+function unicodeReplaceAll(haystack: string, needle: string, replacement: string): string {
+    if (needle === "") {
+        return [...haystack].join(replacement);
+    }
+    return haystack.split(needle).join(replacement);
+}
+
+function unicodeReplaceLeft(haystack: string, needle: string, replacement: string, limit: number): string {
+    if (needle === "") {
+        const elements = [...haystack];
+        return elements.slice(0, limit + 1).join(replacement) + elements.slice(limit + 1).join("");
+    }
+    let head = "";
+    let tail = haystack;
+    while (limit--) {
+        const found = tail.indexOf(needle);
+        if (found < 0) {
+            break;
+        }
+        head = head + tail.slice(0, found) + replacement;
+        tail = tail.slice(found + needle.length);
+    }
+    return head + tail;
+}
+
+function unicodeReplaceRight(haystack: string, needle: string, replacement: string, limit: number): string {
+    if (needle === "") {
+        const elements = [...haystack];
+        return elements.slice(0, -1 - limit).join("") + elements.slice(-1 - limit).join(replacement);
+    }
+    let head = haystack;
+    let tail = "";
+    while (limit--) {
+        const found = head.lastIndexOf(needle);
+        if (found < 0) {
+            break;
+        }
+        tail = replacement + head.slice(found + needle.length) + tail;
+        head = head.slice(0, found);
+    }
+    return head + tail;
 }
 
 export namespace Value {
     export class Bool {
         constructor(public underlying: boolean) {}
+        static format(value: boolean): string {
+            return value ? "true" : "false";
+        }
+        toBoolean() {
+            return this.underlying;
+        }
         toString() {
-            return this.underlying ? "true" : "false";
+            return Bool.format(this.underlying);
         }
     }
     export class Int {
         constructor(public underlying: bigint) {}
+        static format(value: bigint | number): string {
+            return value.toString();
+        }
+        toBigint(): bigint {
+            return this.underlying;
+        }
+        toNumber() {
+            return Number(this.underlying);
+        }
         toString() {
-            return this.underlying.toString();
+            return Int.format(this.underlying);
         }
     }
     export class Float {
@@ -311,26 +423,94 @@ export namespace Value {
             parts[0] = parts[0].replace(/0+$/, "").replace(/\.$/, ".0");
             return parts.join("e");
         }
+        toBigint() {
+            return BigInt(this.underlying);
+        }
+        toNumber() {
+            return this.underlying;
+        }
         toString() {
             return Float.format(this.underlying);
         }
     }
     export class Unicode {
         constructor(public underlying: Uint32Array) {}
+        get length(): bigint {
+            return BigInt(this.underlying.length);
+        }
         at(index: bigint): string {
             if (index < 0 || index >= this.length) {
                 return "";
             }
             return unicodeStringAt(this.underlying, Number(index));
         }
-        get length(): bigint {
-            return BigInt(this.underlying.length);
+        compareTo(that: Unicode): Comparison {
+            return unicodeCompareTo(this.underlying, that.underlying);
         }
-        toString() {
+        contains(needle: Unicode): boolean {
+            return this.toString().indexOf(needle.toString()) >= 0;
+        }
+        endsWith(needle: Unicode): boolean {
+            return unicodeEndsWith(this.underlying, needle.underlying);
+        }
+        hash(): bigint {
+            // See https://docs.oracle.com/javase/6/docs/api/java/lang/String.html#hashCode()
+            const mask = BigInt("0xFFFFFFFFFFFFFFFF");
+            const multiplier = BigInt(31);
+            let hash = BigInt(0);
+            for (const codepoint of this.underlying) {
+                hash = (hash * multiplier + BigInt(codepoint)) & mask;
+            }
+            return hash;
+        }
+        indexOf(needle: Unicode): number {
+            return unicodeIndex(this.underlying, this.toString().indexOf(needle.toString()));
+        }
+        join(args: Value[]): Unicode {
+            return Unicode.fromString(args.map(arg => arg.toString()).join(this.toString()));
+        }
+        lastIndexOf(needle: Unicode): number {
+            return unicodeIndex(this.underlying, this.toString().lastIndexOf(needle.toString()));
+        }
+        padLeft(width: number, padding: Unicode): Unicode {
+            return Unicode.fromString(this.toString().padStart(width, padding.toString()));
+        }
+        padRight(width: number, padding: Unicode): Unicode {
+            return Unicode.fromString(this.toString().padEnd(width, padding.toString()));
+        }
+        repeat(count: number): Unicode {
+            return Unicode.fromString(this.toString().repeat(count));
+        }
+        replace(needle: Unicode, replacement: Unicode, count?: number): Unicode {
+            if (count === undefined) {
+                return Unicode.fromString(unicodeReplaceAll(this.toString(), needle.toString(), replacement.toString()));
+            }
+            if (count > 0) {
+                return Unicode.fromString(unicodeReplaceLeft(this.toString(), needle.toString(), replacement.toString(), count));
+            }
+            if (count < 0) {
+                return Unicode.fromString(unicodeReplaceRight(this.toString(), needle.toString(), replacement.toString(), -count));
+            }
+            return this;
+        }
+        slice(start?: number, end?: number): Unicode {
+            return new Value.Unicode(this.underlying.slice(start, end));
+        }
+        startsWith(needle: Unicode): boolean {
+            return unicodeStartsWith(this.underlying, needle.underlying);
+        }
+        toCodepoints(): Uint32Array {
+            return this.underlying;
+        }
+        toString(): string {
             return unicodeStringAll(this.underlying);
         }
+        static fromString(value: string): Unicode {
+            const unicode = Uint32Array.from([...value].map(ch => ch.codePointAt(0)));
+            return new Value.Unicode(unicode);
+        }
     }
-    export class Objekt {
+    export class Instance {
         constructor(public underlying: object) {}
         toString() {
             return this.underlying.toString();
@@ -342,7 +522,13 @@ export namespace Value {
         }
     }
     export enum Kind {
-        Void, Null, Bool, Int, Float, String, Object
+        Void = "void",
+        Null = "null",
+        Bool = "bool",
+        Int = "int",
+        Float = "float",
+        String = "string",
+        Object = "object",
     }
     export const VOID = Value.fromVoid();
     export const NULL = Value.fromNull();

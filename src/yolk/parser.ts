@@ -391,6 +391,7 @@ class Impl extends Logger {
             ?? this.parseIntegerLiteral(lookahead)
             ?? this.parseFloatLiteral(lookahead)
             ?? this.parseStringLiteral(lookahead)
+            ?? this.parseTypeKeyword(lookahead)
             ?? this.parseIdentifier(lookahead);
     }
     private parseValueExpressionPrimaryBack(front: Success): Success | undefined {
@@ -433,18 +434,36 @@ class Impl extends Logger {
         return undefined;
     }
     private parseIntegerLiteral(lookahead: number): Success | undefined {
-        const token = this.input.peek(lookahead);
+        let token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Integer) {
             const node = Node.createLiteral(this.peekLocation(token), Value.fromInt(token.value as bigint));
             return this.success(node, lookahead + 1);
         }
+        if (token.kind === Tokenizer.Kind.Punctuation && token.value === "-") {
+            token = this.input.peek(lookahead + 1);
+            if (token.kind === Tokenizer.Kind.Integer && token.previous === Tokenizer.Kind.Punctuation) {
+                const location = this.peekLocation(token);
+                location.column0--;
+                const node = Node.createLiteral(location, Value.fromInt(-token.value as bigint));
+                return this.success(node, lookahead + 2);
+            }
+        }
         return undefined;
     }
     private parseFloatLiteral(lookahead: number): Success | undefined {
-        const token = this.input.peek(lookahead);
+        let token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Float) {
             const node = Node.createLiteral(this.peekLocation(token), Value.fromFloat(token.value as number));
             return this.success(node, lookahead + 1);
+        }
+        if (token.kind === Tokenizer.Kind.Punctuation && token.value === "-") {
+            token = this.input.peek(lookahead + 1);
+            if (token.kind === Tokenizer.Kind.Float && token.previous === Tokenizer.Kind.Punctuation) {
+                const location = this.peekLocation(token);
+                location.column0--;
+                const node = Node.createLiteral(location, Value.fromFloat(-token.value as number));
+                return this.success(node, lookahead + 2);
+            }
         }
         return undefined;
     }

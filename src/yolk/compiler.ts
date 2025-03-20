@@ -90,6 +90,8 @@ class Impl extends Logger {
                 return new Node(pnode.location, Compiler.Kind.Identifier, [], pnode.value);
             case Parser.Kind.Literal:
                 return new Node(pnode.location, Compiler.Kind.ValueLiteral, [], pnode.value);
+            case Parser.Kind.TypeKeyword:
+                return new Node(pnode.location, Compiler.Kind.TypeKeyword, [], pnode.value);
             case Parser.Kind.PropertyAccess:
                 return this.compileExprPropertyGet(pnode.children[0], pnode.children[1]);
             case Parser.Kind.IndexAccess:

@@ -1,4 +1,5 @@
 import { assert } from "./assertion";
+import { Builtins } from "./builtins";
 import { Compiler } from "./compiler";
 import { BaseException, ExceptionOrigin, ExceptionParameters, RuntimeException } from "./exception";
 import { ConsoleLogger, Logger } from "./logger";
@@ -27,6 +28,7 @@ abstract class Node {
     abstract resolve(resolver: Resolver): Type;
     abstract evaluate(runner: Program.Runner): Value;
     abstract execute(runner: Program.Runner): void;
+    abstract callsite(runner: Program.Runner): Program.Callsite;
     abstract mutate(runner: Program.Runner, op: string, expr: Node): void;
     raise(message: string, parameters?: ExceptionParameters): never {
         throw new RuntimeException(message, { ...parameters, location: this.location });
@@ -50,9 +52,13 @@ class Node_Module extends Node {
         this.unimplemented(runner);
     }
     execute(runner: Program.Runner): void {
+        runner.location = this.location;
         for (const child of this.children) {
             child.execute(runner);
         }
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
@@ -70,9 +76,13 @@ class Node_StmtBlock extends Node {
         this.unimplemented(runner);
     }
     execute(runner: Program.Runner): void {
+        runner.location = this.location;
         for (const child of this.children) {
             child.execute(runner);
         }
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
@@ -94,6 +104,9 @@ class Node_StmtCall extends Node {
         runner.location = this.location;
         runner.print(text);
     }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
@@ -114,6 +127,9 @@ class Node_StmtVariableDefine extends Node {
         runner.location = this.initializer.location;
         runner.variableDefine(this.identifier, this.type, initializer);
     }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
@@ -132,6 +148,9 @@ class Node_StmtAssign extends Node {
     execute(runner: Program.Runner): void {
         runner.location = this.location;
         this.target.mutate(runner, "=", this.expr);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
@@ -152,6 +171,9 @@ class Node_StmtMutate extends Node {
         runner.location = this.location;
         this.target.mutate(runner, this.op, this.expr);
     }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
@@ -171,6 +193,9 @@ class Node_StmtNudge extends Node {
         runner.location = this.location;
         this.target.mutate(runner, this.op, this.target);
     }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
@@ -189,12 +214,17 @@ class Node_StmtForeach extends Node {
     execute(runner: Program.Runner): void {
         const expr = this.expr.evaluate(runner);
         assert.eq(expr.kind, Value.Kind.String);
+        runner.location = this.location;
         runner.variableDeclare(this.identifier, this.type);
         const unicode = expr.getUnicode();
         for (let index = BigInt(0); index < unicode.length; ++index) {
+            runner.location = this.location;
             runner.variableSet(this.identifier, Value.fromString(unicode.at(index)));
             this.block.execute(runner);
         }
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
@@ -222,6 +252,9 @@ class Node_StmtForloop extends Node {
             this.advance.execute(runner);
         }
     }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
@@ -241,6 +274,9 @@ class Node_LiteralIdentifier extends Node {
     execute(runner: Program.Runner): void {
         this.unimplemented(runner);
     }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
     mutate(runner: Program.Runner, op: string, expr: Node): Value {
         return runner.variableMut(this.identifier, op, () => expr.evaluate(runner));
     }
@@ -255,12 +291,22 @@ class Node_ValuePropertyGet extends Node {
     }
     evaluate(runner: Program.Runner): Value {
         const value = this.instance.evaluate(runner);
+        runner.location = this.location;
         if (value.kind === Value.Kind.String && this.property === "length") {
             return Value.fromInt(value.getUnicode().length);
         }
         this.unimplemented(runner);
     }
     execute(runner: Program.Runner): void {
+        this.unimplemented(runner);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        const instance = this.instance.evaluate(runner);
+        runner.location = this.location;
+        if (instance.kind === Value.Kind.String) {
+            return Builtins.String.queryMethod(instance.getUnicode(), this.property)
+                ?? this.raise("Unknown builtin property for 'string': '{method}()'", {method:this.property});
+        }
         this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
@@ -280,7 +326,7 @@ class Node_ValueIndexGet extends Node {
         if (value.kind === Value.Kind.String) {
             const index = this.index.evaluate(runner).getInt();
             const unicode = value.getUnicode();
-            const char = unicode.at(index.underlying);
+            const char = unicode.at(index.toBigint());
             if (!char) {
                 this.raise("String index {index} is out of range for a string of length {length}", {index, length: unicode.length});
             }
@@ -291,17 +337,17 @@ class Node_ValueIndexGet extends Node {
     execute(runner: Program.Runner): void {
         this.unimplemented(runner);
     }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
 
-class Node_TypeLiteral extends Node {
-    constructor(location: Program.Location, public type: Type) {
+abstract class Node_TypeLiteral extends Node {
+    constructor(location: Program.Location) {
         super(location);
-    }
-    resolve(resolver_: Resolver): Type {
-        return this.type;
     }
     evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
@@ -310,6 +356,90 @@ class Node_TypeLiteral extends Node {
         this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_TypeLiteral_Void extends Node_TypeLiteral {
+    constructor(location: Program.Location) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        return Type.VOID;
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_TypeLiteral_Bool extends Node_TypeLiteral {
+    constructor(location: Program.Location) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        return Type.BOOL;
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_TypeLiteral_Int extends Node_TypeLiteral {
+    constructor(location: Program.Location) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        return Type.INT;
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_TypeLiteral_Float extends Node_TypeLiteral {
+    constructor(location: Program.Location) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        return Type.FLOAT;
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_TypeLiteral_String extends Node_TypeLiteral {
+    constructor(location: Program.Location) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        return Type.STRING;
+    }
+    callsite(runner_: Program.Runner): Program.Callsite {
+        return Builtins.String.concat;
+    }
+}
+
+class Node_TypeLiteral_Object extends Node_TypeLiteral {
+    constructor(location: Program.Location) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        return Type.OBJECT;
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_TypeLiteral_Any extends Node_TypeLiteral {
+    constructor(location: Program.Location) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        return Type.ANY;
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
 }
@@ -339,6 +469,9 @@ class Node_ValueLiteral extends Node {
     execute(runner: Program.Runner): void {
         this.unimplemented(runner);
     }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
@@ -353,12 +486,19 @@ class Node_ValueCall extends Node {
         return Type.STRING;
     }
     evaluate(runner: Program.Runner): Value {
-        const text = this.children.slice(1).map(child => child.evaluate(runner).asString()).join("");
+        runner.location = this.children[0].location;
+        const callsite = this.children[0].callsite(runner);
+        const args = new Program.Arguments();
+        for (let arg = 1; arg < this.children.length; ++arg) {
+            args.add(this.children[arg].evaluate(runner));
+        }
         runner.location = this.location;
-        // TODO
-        return Value.fromString(text);
+        return callsite(runner, args);
     }
     execute(runner: Program.Runner): void {
+        this.unimplemented(runner);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
@@ -380,6 +520,9 @@ class Node_ValueOperatorBinary extends Node {
         return Value.binary(lhs, this.op, rhs).unwrap(this.location);
     }
     execute(runner: Program.Runner): void {
+        this.unimplemented(runner);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
@@ -464,19 +607,19 @@ class Impl extends Logger {
         const keyword = node.value.asString();
         switch (keyword) {
             case "void":
-                return new Node_TypeLiteral(node.location, Type.VOID);
+                return new Node_TypeLiteral_Void(node.location);
             case "bool":
-                return new Node_TypeLiteral(node.location, Type.BOOL);
+                return new Node_TypeLiteral_Bool(node.location);
             case "int":
-                return new Node_TypeLiteral(node.location, Type.INT);
+                return new Node_TypeLiteral_Int(node.location);
             case "float":
-                return new Node_TypeLiteral(node.location, Type.FLOAT);
+                return new Node_TypeLiteral_Float(node.location);
             case "string":
-                return new Node_TypeLiteral(node.location, Type.STRING);
+                return new Node_TypeLiteral_String(node.location);
             case "object":
-                return new Node_TypeLiteral(node.location, Type.OBJECT);
+                return new Node_TypeLiteral_Object(node.location);
             case "any":
-                return new Node_TypeLiteral(node.location, Type.ANY);
+                return new Node_TypeLiteral_Any(node.location);
         }
         assert.fail("Unknown keyword for Compiler.Kind.TypeKeyword in linkTypeKeyword: {keyword}", {keyword});
     }

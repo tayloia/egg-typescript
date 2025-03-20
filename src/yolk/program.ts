@@ -14,6 +14,55 @@ export class Program {
 }
 
 export namespace Program {
+    export type Callsite = (runner: Runner, args: Arguments) => Value;
+    export class Arguments {
+        funcname: string = "";
+        arguments: Value[] = [];
+        add(argument: Value) {
+            this.arguments.push(argument);
+        }
+        evaluate(callee: Value) {
+            return callee;
+        }
+        expect(lbound: number, ubound: number = lbound): number {
+            const expected = () => ["no arguments", "one argument"][lbound] ?? "{expected} arguments";
+            assert.le(lbound, ubound);
+            if (lbound === ubound) {
+                // Exact number of arguments expected
+                if (this.arguments.length !== lbound) {
+                    this.fail(`Expected ${expected()}, but got {actual}`, {expected: lbound, actual: this.arguments.length});
+                }
+            } else if (this.arguments.length < lbound) {
+                this.fail(`Expected at least ${expected()}, but got {actual}`, {actual: this.arguments.length});
+            } else if (this.arguments.length > ubound) {
+                this.fail(`Expected no more than ${expected()}, but got {actual}`, {actual: this.arguments.length});
+            }
+            return this.arguments.length;
+        }
+        expectInt(index: number) {
+            const value = this.arguments[index];
+            if (value.kind !== Value.Kind.Int) {
+                this.fail("Expected argument {index} to be an 'int', but got {value}" + value.describe(), {index, value});
+            }
+            return value.getInt();
+        }
+        expectUnicode(index: number) {
+            const value = this.arguments[index];
+            if (value.kind !== Value.Kind.String) {
+                this.fail("Expected argument {index} to be a 'string', but got {value}" + value.describe(), {index, value});
+            }
+            return value.getUnicode();
+        }
+        expectString(index: number) {
+            return this.expectUnicode(index).toString();
+        }
+        fail(message: string, parameters?: ExceptionParameters): never {
+            if (this.funcname) {
+                throw new RuntimeException(message + " in function call to '{function}()'", { ...parameters, function: this.funcname });
+            }
+            throw new RuntimeException(message + " in function call", parameters);
+        }
+    }
     export class Location {
         constructor(public source: string, public line0: number = 1, public column0: number = 1, public line1: number = 0, public column1: number = 0) {}
         span(that: Location): Location {
