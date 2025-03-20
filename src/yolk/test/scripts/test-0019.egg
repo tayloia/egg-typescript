@@ -74,7 +74,7 @@ print("banana".replace("", "-", -3));
 print("banana".replace("", "-", 0));
 ///>banana
 
-print("egg".padLeft(8));
+print("egg".padStart(8));
 ///>     egg
-print("egg".padRight(8, "[]"));
+print("egg".padEnd(8, "[]"));
 ///>egg[][][

@@ -472,10 +472,10 @@ export namespace Value {
         lastIndexOf(needle: Unicode): number {
             return unicodeIndex(this.underlying, this.toString().lastIndexOf(needle.toString()));
         }
-        padLeft(width: number, padding: Unicode): Unicode {
+        padStart(width: number, padding: Unicode): Unicode {
             return Unicode.fromString(this.toString().padStart(width, padding.toString()));
         }
-        padRight(width: number, padding: Unicode): Unicode {
+        padEnd(width: number, padding: Unicode): Unicode {
             return Unicode.fromString(this.toString().padEnd(width, padding.toString()));
         }
         repeat(count: number): Unicode {

@@ -13,8 +13,8 @@ export namespace Builtins {
             ["indexOf", indexOf],
             ["join", join],
             ["lastIndexOf", lastIndexOf],
-            ["padLeft", padLeft],
-            ["padRight", padRight],
+            ["padStart", padStart],
+            ["padEnd", padEnd],
             ["repeat", repeat],
             ["replace", replace],
             ["slice", slice],
@@ -63,17 +63,17 @@ export namespace Builtins {
             const index = instance.lastIndexOf(args.expectUnicode(0));
             return (index < 0) ? Value.fromNull() : Value.fromInt(BigInt(index));
         }
-        function padLeft(instance: Value.Unicode, args: Program.Arguments): Value {
+        function padStart(instance: Value.Unicode, args: Program.Arguments): Value {
             if (args.expect(1, 2) === 1) {
-                return Value.fromString(instance.padLeft(args.expectInt(0).toNumber(), SPACE));
+                return Value.fromString(instance.padStart(args.expectInt(0).toNumber(), SPACE));
             }
-            return Value.fromString(instance.padLeft(args.expectInt(0).toNumber(), args.expectUnicode(1)));
+            return Value.fromString(instance.padStart(args.expectInt(0).toNumber(), args.expectUnicode(1)));
         }
-        function padRight(instance: Value.Unicode, args: Program.Arguments): Value {
+        function padEnd(instance: Value.Unicode, args: Program.Arguments): Value {
             if (args.expect(1, 2) === 1) {
-                return Value.fromString(instance.padRight(args.expectInt(0).toNumber(), SPACE));
+                return Value.fromString(instance.padEnd(args.expectInt(0).toNumber(), SPACE));
             }
-            return Value.fromString(instance.padRight(args.expectInt(0).toNumber(), args.expectUnicode(1)));
+            return Value.fromString(instance.padEnd(args.expectInt(0).toNumber(), args.expectUnicode(1)));
         }
         function repeat(instance: Value.Unicode, args: Program.Arguments): Value {
             args.expect(1);
