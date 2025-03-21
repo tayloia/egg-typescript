@@ -230,13 +230,13 @@ class Impl extends Logger {
             }
             if (this.isPunctuation(target.lookahead, "=")) {
                 const expr = this.parseExpression(target.lookahead + 1) ?? this.unexpected("Expected expression after assignment '=' operator", target.lookahead + 1);
-                return new Success(Node.createStatementAssign(this.peekLocation(lookahead, expr.lookahead), target.node, expr.node), expr.lookahead);
+                return new Success(Node.createStatementAssign(this.peekLocation(lookahead, expr.lookahead - 1), target.node, expr.node), expr.lookahead);
             }
             for (const op of ["+=","-=","/=","%=","<<=",">>=",">>>=","&=","|=","^=","&&=","||=","??="]) {
                 if (this.isPunctuation(target.lookahead, op)) {
                     const next = target.lookahead + op.length;
                     const expr = this.parseExpression(next) ?? this.unexpected(`Expected expression after mutation '${op}' operator`, next);
-                    return new Success(Node.createStatementMutate(this.peekLocation(lookahead, expr.lookahead), target.node, op, expr.node), expr.lookahead);
+                    return new Success(Node.createStatementMutate(this.peekLocation(lookahead, expr.lookahead - 1), target.node, op, expr.node), expr.lookahead);
                 }
             }
         }

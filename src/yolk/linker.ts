@@ -522,15 +522,19 @@ class Node_TargetProperty extends Node {
         this.unimplemented(runner);
     }
     mutate(runner: Program.Runner, op: string, expr: Node): Value {
+        const location = runner.location;
         const instance = this.instance.evaluate(runner);
+        if (instance.kind === Value.Kind.String) {
+            const property = this.property.evaluate(runner).asString();
+            throw new RuntimeException("Values of type 'string' do not support modification of property '{property}'", { property, location });
+        }
         if (instance.kind === Value.Kind.Proxy) {
             const property = this.property.evaluate(runner).asString();
-            runner.location = this.location;
             if (op === "=") {
                 const value = expr.evaluate(runner);
-                return instance.getProxy().setProperty(property, value).unwrap(this.location);
+                return instance.getProxy().setProperty(property, value).unwrap(location);
             }
-            return instance.getProxy().mutProperty(property, op, () => expr.evaluate(runner)).unwrap(this.location);
+            return instance.getProxy().mutProperty(property, op, () => expr.evaluate(runner)).unwrap(location);
         }
         this.unimplemented(runner);
     }

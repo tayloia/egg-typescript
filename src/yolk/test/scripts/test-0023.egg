@@ -1,0 +1,4 @@
+var s = "hello";
+s.length = 4;
+///<RUNTIME><ERROR><RESOURCE>(2,1-12): Values of type 'string' do not support modification of property 'length'
+//TODO //<COMPILER><ERROR><RESOURCE>(2,1-12): Values of type 'string' do not support modification of property 'length'
