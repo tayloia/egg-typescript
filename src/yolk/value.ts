@@ -545,7 +545,11 @@ export namespace Value {
     }
     export interface Proxy {
         getProperty(property: string): Value | Exception;
+        setProperty(property: string, value: Value): Value | Exception;
+        mutProperty(property: string, op: string, lazy: () => Value): Value | Exception;
         getIndex(index: Value): Value | Exception;
+        setIndex(index: Value, value: Value): Value | Exception;
+        mutIndex(index: Value, op: string, lazy: () => Value): Value | Exception;
         toUnderlying(): unknown;
         toDebug(): string;
         toString(options_?: ToStringOptions): string;

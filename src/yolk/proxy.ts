@@ -6,7 +6,11 @@ import { Location } from "./location";
 
 abstract class ProxyBase implements Value.Proxy {
     abstract getProperty(property: string): Value | Exception;
+    abstract setProperty(property: string, value: Value): Value | Exception;
+    abstract mutProperty(property: string, op: string, lazy: () => Value): Value | Exception;
     abstract getIndex(index: Value): Value | Exception;
+    abstract setIndex(index: Value, value: Value): Value | Exception;
+    abstract mutIndex(index: Value, op: string, lazy: () => Value): Value | Exception;
     [inspect.custom]() {
         return this.toDebug();
     }
@@ -30,6 +34,16 @@ export class ProxyArray extends ProxyBase {
         }
         return new RuntimeException("Unknown property for type 'ProxyArray': '{property}'", {property});
     }
+    setProperty(property: string, value: Value): Value | Exception {
+        switch (property) {
+            case "length":
+                return this.setLength(value.getInt().toNumber());
+        }
+        return new RuntimeException("Property modification is not supported for type 'ProxyArray': '{property}'", {property, value});
+    }
+    mutProperty(property: string, op: string, lazy_: () => Value): Value | Exception {
+        return new RuntimeException("Property mutation is not supported for type 'ProxyArray': '{property}'", {property, op});
+    }
     getIndex(index: Value): Value | Exception {
         if (index.kind === Value.Kind.Int) {
             const i = index.getInt().toNumber();
@@ -37,6 +51,13 @@ export class ProxyArray extends ProxyBase {
             return this.elements[i];
         }
         return new RuntimeException("Indexing is not supported by type 'ProxyArray'", {index});
+    }
+    setIndex(index: Value, value: Value): Value | Exception {
+        this.elements[index.asNumber()] = value;
+        return Value.VOID;
+    }
+    mutIndex(index: Value, op: string, lazy_: () => Value): Value | Exception {
+        return new RuntimeException("Index mutation is not supported for type 'ProxyArray': '{property}'", {index, op});
     }
     toUnderlying(): unknown {
         return this;
@@ -46,6 +67,14 @@ export class ProxyArray extends ProxyBase {
             quoteString: "\"",
         }
         return "[" + this.elements.map(element => element.toString(options)).join(",") + "]";
+    }
+    private setLength(length: number): Value | Exception {
+        let fill = this.elements.length;
+        this.elements.length = length;
+        while (fill < length) {
+            this.elements[fill++] = Value.fromNull();
+        }
+        return Value.VOID;
     }
 }
 
@@ -66,8 +95,20 @@ export class ProxyPredicateBinary extends ProxyBase {
         }
         return new RuntimeException("Unknown property for type 'ProxyPredicateBinary': '{property}'", {property});
     }
+    setProperty(property: string, value: Value): Value | Exception {
+        return new RuntimeException("Property modification is not supported by type 'ProxyPredicateBinary'", {property, value});
+    }
+    mutProperty(property: string, op: string, lazy_: () => Value): Value | Exception {
+        return new RuntimeException("Property mutation is not supported by type 'ProxyPredicateBinary'", {property, op});
+    }
     getIndex(index: Value): Value | Exception {
         return new RuntimeException("Indexing is not supported by type 'ProxyPredicateBinary'", {index});
+    }
+    setIndex(index: Value, value: Value): Value | Exception {
+        return new RuntimeException("Index modification is not supported for type 'ProxyPredicateBinary': '{property}'", {index, value});
+    }
+    mutIndex(index: Value, op: string, lazy_: () => Value): Value | Exception {
+        return new RuntimeException("Index mutation is not supported for type 'ProxyPredicateBinary': '{property}'", {index, op});
     }
     toString(): string {
         return `<ProxyPredicateBinary ${this.value} ${this.lhs} ${this.op} ${this.rhs} ${this.location}]`;

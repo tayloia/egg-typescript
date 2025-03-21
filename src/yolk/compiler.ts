@@ -88,15 +88,26 @@ class Impl extends Logger {
     compileTarget(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
-                return new Node(pnode.location, Compiler.Kind.Identifier, [], pnode.value);
+                assert.eq(pnode.children.length, 0);
+                return new Node(pnode.location, Compiler.Kind.TargetVariable, [], pnode.value);
+            case Parser.Kind.PropertyAccess:
+                assert.eq(pnode.children.length, 2);
+                return new Node(pnode.location, Compiler.Kind.TargetProperty, [this.compileExpr(pnode.children[0]), this.compilePropertyIdentifier(pnode.children[1])]);
+            case Parser.Kind.IndexAccess:
+                assert.eq(pnode.children.length, 2);
+                return new Node(pnode.location, Compiler.Kind.TargetIndex, [this.compileExpr(pnode.children[0]), this.compileExpr(pnode.children[1])]);
         }
         assert.fail("Unknown node kind in compileTarget: {kind}", {kind:pnode.kind});
+    }
+    compilePropertyIdentifier(pnode: Parser.Node): Node {
+        assert.eq(pnode.kind, Parser.Kind.Identifier);
+        return new Node(pnode.location, Compiler.Kind.ValueScalar, [], pnode.value);
     }
     compileExpr(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
                 assert.eq(pnode.children.length, 0);
-                return new Node(pnode.location, Compiler.Kind.Identifier, [], pnode.value);
+                return new Node(pnode.location, Compiler.Kind.ValueVariableGet, [], pnode.value);
             case Parser.Kind.LiteralScalar:
                 assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Compiler.Kind.ValueScalar, [], pnode.value);
@@ -131,7 +142,8 @@ class Impl extends Logger {
         return new Node(location, Compiler.Kind.ValueIndexGet, children);
     }
     compileExprPropertyGet(instance: Parser.Node, property: Parser.Node): Node {
-        const children = [this.compileExpr(instance), this.compileExpr(property)];
+        assert.eq(property.kind, Parser.Kind.Identifier);
+        const children = [this.compileExpr(instance), this.compilePropertyIdentifier(property)];
         const location = children[0].location.span(children[1].location);
         return new Node(location, Compiler.Kind.ValuePropertyGet, children);
     }
@@ -188,12 +200,15 @@ export namespace Compiler {
         StmtForloop = "stmt-forloop",
         StmtVariableDeclare = "stmt-variable-declare",
         StmtVariableDefine = "stmt-variable-define",
-        Identifier = "identifier",
+        TargetVariable = "target-variable",
+        TargetProperty = "target-property",
+        TargetIndex = "target-index",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
         ValueScalar = "value-scalar",
         ValueArray = "value-array",
         ValueCall = "value-call",
+        ValueVariableGet = "value-variable-get",
         ValuePropertyGet = "value-property-get",
         ValueIndexGet = "value-index-get",
         ValueOperatorBinary = "value-operator-binary",

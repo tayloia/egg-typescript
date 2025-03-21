@@ -270,7 +270,7 @@ class Node_StmtForloop extends Node {
     }
 }
 
-class Node_LiteralIdentifier extends Node {
+class Node_ValueVariableGet extends Node {
     constructor(location: Location, public identifier: string) {
         super(location);
     }
@@ -309,8 +309,8 @@ class Node_LiteralIdentifier extends Node {
         }
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op: string, expr: Node): Value {
-        return runner.variableMut(this.identifier, op, () => expr.evaluate(runner));
+    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
     }
 }
 
@@ -480,6 +480,89 @@ class Node_TypeLiteral_Any extends Node_TypeLiteral {
         return Type.ANY;
     }
     callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_TargetVariable extends Node {
+    constructor(location: Location, public identifier: string) {
+        super(location);
+    }
+    resolve(resolver: Resolver): Type {
+        this.unimplemented(resolver);
+    }
+    evaluate(runner: Program.Runner): Value {
+        this.unimplemented(runner);
+    }
+    execute(runner: Program.Runner): void {
+        this.unimplemented(runner);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+    mutate(runner: Program.Runner, op: string, expr: Node): Value {
+        return runner.variableMut(this.identifier, op, () => expr.evaluate(runner));
+    }
+}
+
+class Node_TargetProperty extends Node {
+    constructor(location: Location, public instance: Node, public property: Node) {
+        super(location);
+    }
+    resolve(resolver: Resolver): Type {
+        this.unimplemented(resolver);
+    }
+    evaluate(runner: Program.Runner): Value {
+        this.unimplemented(runner);
+    }
+    execute(runner: Program.Runner): void {
+        this.unimplemented(runner);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+    mutate(runner: Program.Runner, op: string, expr: Node): Value {
+        const instance = this.instance.evaluate(runner);
+        if (instance.kind === Value.Kind.Proxy) {
+            const property = this.property.evaluate(runner).asString();
+            runner.location = this.location;
+            if (op === "=") {
+                const value = expr.evaluate(runner);
+                return instance.getProxy().setProperty(property, value).unwrap(this.location);
+            }
+            return instance.getProxy().mutProperty(property, op, () => expr.evaluate(runner)).unwrap(this.location);
+        }
+        this.unimplemented(runner);
+    }
+}
+
+class Node_TargetIndex extends Node {
+    constructor(location: Location, public instance: Node, public index: Node) {
+        super(location);
+    }
+    resolve(resolver: Resolver): Type {
+        this.unimplemented(resolver);
+    }
+    evaluate(runner: Program.Runner): Value {
+        this.unimplemented(runner);
+    }
+    execute(runner: Program.Runner): void {
+        this.unimplemented(runner);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+    mutate(runner: Program.Runner, op: string, expr: Node): Value {
+        const instance = this.instance.evaluate(runner);
+        if (instance.kind === Value.Kind.Proxy) {
+            const index = this.index.evaluate(runner);
+            runner.location = this.location;
+            if (op === "=") {
+                const value = expr.evaluate(runner);
+                return instance.getProxy().setIndex(index, value).unwrap(this.location);
+            }
+            return instance.getProxy().mutIndex(index, op, () => expr.evaluate(runner)).unwrap(this.location);
+        }
         this.unimplemented(runner);
     }
 }
@@ -664,9 +747,15 @@ class Impl extends Logger {
             case Compiler.Kind.StmtForloop:
                 assert.eq(node.children.length, 4);
                 return this.linkStmtForloop(node);
-            case Compiler.Kind.Identifier:
+            case Compiler.Kind.TargetVariable:
                 assert.eq(node.children.length, 0);
-                return new Node_LiteralIdentifier(node.location, node.value.asString());
+                return new Node_TargetVariable(node.location, node.value.asString());
+            case Compiler.Kind.TargetProperty:
+                assert.eq(node.children.length, 2);
+                return new Node_TargetProperty(node.location, this.linkNode(node.children[0]), this.linkNode(node.children[1]));
+            case Compiler.Kind.TargetIndex:
+                assert.eq(node.children.length, 2);
+                return new Node_TargetIndex(node.location, this.linkNode(node.children[0]), this.linkNode(node.children[1]));
             case Compiler.Kind.TypeKeyword:
                 assert.eq(node.children.length, 0);
                 return this.linkTypeKeyword(node);
@@ -678,6 +767,9 @@ class Impl extends Logger {
             case Compiler.Kind.ValueCall:
                 assert.ge(node.children.length, 1);
                 return new Node_ValueCall(node.location, this.linkNodes(node.children));
+            case Compiler.Kind.ValueVariableGet:
+                assert.eq(node.children.length, 0);
+                return new Node_ValueVariableGet(node.location, node.value.asString());
             case Compiler.Kind.ValuePropertyGet:
                 assert.ge(node.children.length, 2);
                 return this.linkValuePropertyGet(node);
@@ -721,7 +813,7 @@ class Impl extends Logger {
     linkValuePropertyGet(node: Compiler.Node): Node {
         assert(node.kind === Compiler.Kind.ValuePropertyGet);
         assert.eq(node.children.length, 2);
-        assert.eq(node.children[1].kind, Compiler.Kind.Identifier);
+        assert.eq(node.children[1].kind, Compiler.Kind.ValueScalar);
         const property = node.children[1].value.asString();
         return new Node_ValuePropertyGet(node.location, this.linkNode(node.children[0]), property);
     }
