@@ -171,16 +171,7 @@ class Node implements Parser.Node {
 }
 
 class Success {
-    readonly failed = false;
     constructor(public node: Node, public lookahead: number) {}
-}
-
-class Failure { // WIBBLE
-    readonly failed = true;
-    logs: Logger.Entry[];
-    constructor(message: string, parameters?: Message.Parameters) {
-        this.logs = [new Logger.Entry(Logger.Severity.Error, message, parameters)];
-    }
 }
 
 class ParserException extends Exception {
@@ -196,10 +187,7 @@ class Impl extends Logger {
     expectModule(): Node {
         let incoming = this.input.peek();
         if (incoming.underlying.kind === Tokenizer.Kind.EOF && incoming.previous === Tokenizer.Kind.EOF) {
-            const message = "Empty input";
-            const parameters = {location: new Location(this.input.source, 0, 0)};
-            this.logger.error(message, parameters);
-            throw new ParserException(message, parameters);
+            this.raise("Empty input", {location: new Location(this.input.source, 0, 0)});
         }
         const children = [];
         while (incoming.underlying.kind !== Tokenizer.Kind.EOF) {
@@ -210,7 +198,7 @@ class Impl extends Logger {
         return Node.createModule(this.input.source, children);
     }
     private expectModuleStatement(): Node {
-        const statement = this.parseStatement(0) ?? this.throwUnexpected("Expected module statement", 0);
+        const statement = this.parseStatement(0) ?? this.unexpected("Expected module statement", 0);
         return this.commit(statement);
     }
     private parseStatement(lookahead: number): Success | undefined {
@@ -238,17 +226,17 @@ class Impl extends Logger {
         const target = this.parseAssignmentTarget(lookahead);
         if (target) {
             if (this.isPunctuation(target.lookahead, "==")) {
-                this.throwUnexpected("Expected assignment operator like '='", target.lookahead);
+                this.unexpected("Expected assignment operator like '='", target.lookahead);
             }
             if (this.isPunctuation(target.lookahead, "=")) {
-                const expr = this.parseExpression(target.lookahead + 1) ?? this.throwUnexpected("Expected expression after assignment '=' operator", target.lookahead + 1);
-                return this.success(Node.createStatementAssign(this.peekLocation(lookahead, expr.lookahead), target.node, expr.node), expr.lookahead);
+                const expr = this.parseExpression(target.lookahead + 1) ?? this.unexpected("Expected expression after assignment '=' operator", target.lookahead + 1);
+                return new Success(Node.createStatementAssign(this.peekLocation(lookahead, expr.lookahead), target.node, expr.node), expr.lookahead);
             }
             for (const op of ["+=","-=","/=","%=","<<=",">>=",">>>=","&=","|=","^=","&&=","||=","??="]) {
                 if (this.isPunctuation(target.lookahead, op)) {
                     const next = target.lookahead + op.length;
-                    const expr = this.parseExpression(next) ?? this.throwUnexpected(`Expected expression after mutation '${op}' operator`, next);
-                    return this.success(Node.createStatementMutate(this.peekLocation(lookahead, expr.lookahead), target.node, op, expr.node), expr.lookahead);
+                    const expr = this.parseExpression(next) ?? this.unexpected(`Expected expression after mutation '${op}' operator`, next);
+                    return new Success(Node.createStatementMutate(this.peekLocation(lookahead, expr.lookahead), target.node, op, expr.node), expr.lookahead);
                 }
             }
         }
@@ -257,8 +245,8 @@ class Impl extends Logger {
     private parseStatementNudge(lookahead: number, op: string): Success | undefined {
         // Excluding the trailing semicolon
         if (this.isPunctuation(lookahead, op)) {
-            const target = this.parseAssignmentTarget(lookahead + 2) ?? this.throwUnexpected(`Expected assignment target after '${op}`, lookahead + 2);
-            return this.success(Node.createStatementNudge(this.peekLocation(lookahead, target.lookahead), op, target.node), target.lookahead);
+            const target = this.parseAssignmentTarget(lookahead + 2) ?? this.unexpected(`Expected assignment target after '${op}`, lookahead + 2);
+            return new Success(Node.createStatementNudge(this.peekLocation(lookahead, target.lookahead), op, target.node), target.lookahead);
         }
         return undefined;
     }
@@ -270,8 +258,8 @@ class Impl extends Logger {
         if (type) {
             const identifier = this.parseIdentifier(type.lookahead);
             if (identifier && this.isPunctuation(identifier.lookahead, "=")) {
-                const initializer = this.parseValueExpression(identifier.lookahead + 1) ?? this.throwUnexpected("Expected variable initializer after '='", identifier.lookahead + 1);
-                return this.success(Node.createVariableDefinition(identifier.node.location.span(initializer.node.location), identifier.node.value.asString(), type.node, initializer.node), initializer.lookahead);
+                const initializer = this.parseValueExpression(identifier.lookahead + 1) ?? this.unexpected("Expected variable initializer after '='", identifier.lookahead + 1);
+                return new Success(Node.createVariableDefinition(identifier.node.location.span(initializer.node.location), identifier.node.value.asString(), type.node, initializer.node), initializer.lookahead);
             }
         }
         return undefined;
@@ -298,43 +286,43 @@ class Impl extends Logger {
                 if (expression) {
                     // for ( type identifier : expression
                     if (this.peekPunctuation(expression.lookahead) !== ")") {
-                        this.throwUnexpected("Expected ')' after expression in 'foreach' statement", expression.lookahead, ")");
+                        this.unexpected("Expected ')' after expression in 'foreach' statement", expression.lookahead, ")");
                     }
                     if (this.peekPunctuation(expression.lookahead + 1) !== "{") {
-                        this.throwUnexpected("Expected '{' after ')' in 'foreach' statement", expression.lookahead + 1, "{");
+                        this.unexpected("Expected '{' after ')' in 'foreach' statement", expression.lookahead + 1, "{");
                     }
                     const block = this.expectStatementBlock(expression.lookahead + 1, "Expected statement within 'foreach' block");
                     const location = this.peekLocation(lookahead, block.lookahead - 1);
-                    return this.success(Node.createStatementForeach(location, identifier.node.value.asString(), type.node, expression.node, block.node), block.lookahead);
+                    return new Success(Node.createStatementForeach(location, identifier.node.value.asString(), type.node, expression.node, block.node), block.lookahead);
                 }
             }
         }
-        const initialization = this.parseVariableDefinition(lookahead + 2) ?? this.throwUnexpected("Expected variable definition in first clause of 'for' statement", lookahead + 2);
+        const initialization = this.parseVariableDefinition(lookahead + 2) ?? this.unexpected("Expected variable definition in first clause of 'for' statement", lookahead + 2);
         let next = this.expectSemicolon(initialization).lookahead;
-        const condition = this.parseExpression(next) ?? this.throwUnexpected("Expected condition in second clause of 'for' statement", next);
+        const condition = this.parseExpression(next) ?? this.unexpected("Expected condition in second clause of 'for' statement", next);
         next = this.expectSemicolon(condition).lookahead;
-        const advance = this.parseStatementAction(next) ?? this.throwUnexpected("Expected statement in third clause of 'for' statement", next);
+        const advance = this.parseStatementAction(next) ?? this.unexpected("Expected statement in third clause of 'for' statement", next);
         if (this.peekPunctuation(advance.lookahead) !== ")") {
-            this.throwUnexpected("Expected ')' after third clause in 'for' statement", advance.lookahead, ")");
+            this.unexpected("Expected ')' after third clause in 'for' statement", advance.lookahead, ")");
         }
         if (this.peekPunctuation(advance.lookahead + 1) !== "{") {
-            this.throwUnexpected("Expected '{' after ')' in 'for' statement", advance.lookahead + 1, "{");
+            this.unexpected("Expected '{' after ')' in 'for' statement", advance.lookahead + 1, "{");
         }
         const block = this.expectStatementBlock(advance.lookahead + 1, "Expected statement within 'for' block");
         const location = this.peekLocation(lookahead, block.lookahead - 1);
-        return this.success(Node.createStatementForloop(location, initialization.node, condition.node, advance.node, block.node), block.lookahead);
+        return new Success(Node.createStatementForloop(location, initialization.node, condition.node, advance.node, block.node), block.lookahead);
     }
     private expectStatementBlock(lookahead: number, expectation: string): Success {
         assert.eq(this.peekPunctuation(lookahead), "{");
         let next = lookahead + 1;
         const children = [];
         while (this.peekPunctuation(next) !== "}") {
-            const child = this.parseStatement(next) ?? this.throwUnexpected(expectation, next);
+            const child = this.parseStatement(next) ?? this.unexpected(expectation, next);
             children.push(child.node);
             next = child.lookahead;
         }
         const location = this.peekLocation(lookahead, next);
-        return this.success(Node.createStatementBlock(location, children), next + 1);
+        return new Success(Node.createStatementBlock(location, children), next + 1);
     }
     private expectFunctionArguments(lookahead: number): Success {
         assert(this.peekPunctuation(lookahead) === "(");
@@ -351,25 +339,25 @@ class Impl extends Logger {
                 } else if (punctuation === ")") {
                     break;
                 } else {
-                    this.throwUnexpected("Expected ',' or ')' after function argument", lookahead);
+                    this.unexpected("Expected ',' or ')' after function argument", lookahead);
                 }
             }
         }
         assert(this.peekPunctuation(lookahead) === ")");
-        return this.success(Node.createFunctionArguments(this.peekLocation(start, lookahead), nodes), lookahead + 1);
+        return new Success(Node.createFunctionArguments(this.peekLocation(start, lookahead), nodes), lookahead + 1);
     }
     private expectFunctionArgument(lookahead: number): Success {
         return this.parseExpression(lookahead)
-            ?? this.throwUnexpected("Expected function argument", lookahead);
+            ?? this.unexpected("Expected function argument", lookahead);
     }
     private expectIndexArgument(lookahead: number): Success {
         assert(this.peekPunctuation(lookahead) === "[");
-        const argument = this.parseExpression(lookahead + 1) ?? this.throwUnexpected("Expected index expression", lookahead + 1);
+        const argument = this.parseExpression(lookahead + 1) ?? this.unexpected("Expected index expression", lookahead + 1);
         if (this.peekPunctuation(argument.lookahead) !== "]") {
-            this.throwUnexpected("Expected ']' after index expression", argument.lookahead, "]");
+            this.unexpected("Expected ']' after index expression", argument.lookahead, "]");
         }
         argument.node.location = this.peekLocation(lookahead, argument.lookahead);
-        return this.success(argument.node, argument.lookahead + 1);
+        return new Success(argument.node, argument.lookahead + 1);
     }
     private parseExpression(lookahead: number): Success | undefined {
         return this.parseValueExpression(lookahead)
@@ -378,9 +366,9 @@ class Impl extends Logger {
     private parseTypeExpressionOrVar(lookahead: number): Success | undefined {
         if (this.peekKeyword(lookahead) === "var") {
             if (this.peekPunctuation(lookahead + 1) === "?") {
-                return this.success(Node.createTypeInfer(this.peekLocation(lookahead, lookahead + 1), true), lookahead + 2);
+                return new Success(Node.createTypeInfer(this.peekLocation(lookahead, lookahead + 1), true), lookahead + 2);
             }
-            return this.success(Node.createTypeInfer(this.peekLocation(lookahead), false), lookahead + 1);
+            return new Success(Node.createTypeInfer(this.peekLocation(lookahead), false), lookahead + 1);
         }
         return this.parseTypeKeyword(lookahead);
     }
@@ -396,7 +384,7 @@ class Impl extends Logger {
             case "string":
             case "object":
             case "any":
-                return this.success(Node.createTypeKeyword(this.peekLocation(lookahead), keyword), lookahead + 1);
+                return new Success(Node.createTypeKeyword(this.peekLocation(lookahead), keyword), lookahead + 1);
         }
         return undefined;
     }
@@ -410,7 +398,7 @@ class Impl extends Logger {
             if (mid && this.isPunctuation(lhs.lookahead, ":")) {
                 const rhs = this.parseValueExpression(mid.lookahead + 1);
                 if (rhs) {
-                    return this.success(Node.createOperatorTernary(lhs.node, mid.node, rhs.node, "?:"), rhs.lookahead);
+                    return new Success(Node.createOperatorTernary(lhs.node, mid.node, rhs.node, "?:"), rhs.lookahead);
                 }
             }
         }
@@ -432,7 +420,7 @@ class Impl extends Logger {
         if (this.isPunctuation(lhs.lookahead, op)) {
             const rhs = this.parseValueExpression(lhs.lookahead + op.length);
             if (rhs) {
-                return this.success(Node.createOperatorBinary(lhs.node, rhs.node, op), rhs.lookahead);
+                return new Success(Node.createOperatorBinary(lhs.node, rhs.node, op), rhs.lookahead);
             }
         }
         return undefined;
@@ -465,14 +453,14 @@ class Impl extends Logger {
         let back: Success;
         switch (this.peekPunctuation(front.lookahead)) {
             case ".":
-                back = this.parseIdentifier(front.lookahead + 1) ?? this.throwUnexpected("Expected property n", front.lookahead + 1);
-                return this.success(Node.createPropertyAccess(front.node, back.node), back.lookahead);
+                back = this.parseIdentifier(front.lookahead + 1) ?? this.unexpected("Expected property n", front.lookahead + 1);
+                return new Success(Node.createPropertyAccess(front.node, back.node), back.lookahead);
             case "[":
                 back = this.expectIndexArgument(front.lookahead);
-                return this.success(Node.createIndexAccess(front.node, back.node), back.lookahead);
+                return new Success(Node.createIndexAccess(front.node, back.node), back.lookahead);
             case "(":
                 back = this.expectFunctionArguments(front.lookahead);
-                return this.success(Node.createFunctionCall(front.node, back.node), back.lookahead);
+                return new Success(Node.createFunctionCall(front.node, back.node), back.lookahead);
             }
         return undefined;
     }
@@ -480,23 +468,23 @@ class Impl extends Logger {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Identifier) {
             const node = Node.createIdentifier(this.peekLocation(token), token.value as string);
-            return this.success(node, lookahead + 1);
+            return new Success(node, lookahead + 1);
         }
         return undefined;
     }
     private parseNullLiteral(lookahead: number): Success | undefined {
         if (this.peekKeyword(lookahead) === "null") {
             const node = Node.createLiteralScalar(this.peekLocation(lookahead), Value.NULL);
-            return this.success(node, lookahead + 1);
+            return new Success(node, lookahead + 1);
         }
         return undefined;
     }
     private parseBooleanLiteral(lookahead: number): Success | undefined {
         switch (this.peekKeyword(lookahead)) {
             case "false":
-                return this.success(Node.createLiteralScalar(this.peekLocation(lookahead), Value.FALSE), lookahead + 1);
+                return new Success(Node.createLiteralScalar(this.peekLocation(lookahead), Value.FALSE), lookahead + 1);
             case "true":
-                return this.success(Node.createLiteralScalar(this.peekLocation(lookahead), Value.TRUE), lookahead + 1);
+                return new Success(Node.createLiteralScalar(this.peekLocation(lookahead), Value.TRUE), lookahead + 1);
             }
         return undefined;
     }
@@ -504,7 +492,7 @@ class Impl extends Logger {
         let token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Integer) {
             const node = Node.createLiteralScalar(this.peekLocation(token), Value.fromInt(token.value as bigint));
-            return this.success(node, lookahead + 1);
+            return new Success(node, lookahead + 1);
         }
         if (token.kind === Tokenizer.Kind.Punctuation && token.value === "-") {
             token = this.input.peek(lookahead + 1);
@@ -512,7 +500,7 @@ class Impl extends Logger {
                 const location = this.peekLocation(token);
                 location.column0--;
                 const node = Node.createLiteralScalar(location, Value.fromInt(-token.value as bigint));
-                return this.success(node, lookahead + 2);
+                return new Success(node, lookahead + 2);
             }
         }
         return undefined;
@@ -521,7 +509,7 @@ class Impl extends Logger {
         let token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.Float) {
             const node = Node.createLiteralScalar(this.peekLocation(token), Value.fromFloat(token.value as number));
-            return this.success(node, lookahead + 1);
+            return new Success(node, lookahead + 1);
         }
         if (token.kind === Tokenizer.Kind.Punctuation && token.value === "-") {
             token = this.input.peek(lookahead + 1);
@@ -529,7 +517,7 @@ class Impl extends Logger {
                 const location = this.peekLocation(token);
                 location.column0--;
                 const node = Node.createLiteralScalar(location, Value.fromFloat(-token.value as number));
-                return this.success(node, lookahead + 2);
+                return new Success(node, lookahead + 2);
             }
         }
         return undefined;
@@ -538,7 +526,7 @@ class Impl extends Logger {
         const token = this.input.peek(lookahead);
         if (token.kind === Tokenizer.Kind.String) {
             const node = Node.createLiteralScalar(this.peekLocation(token), Value.fromString(token.value as string));
-            return this.success(node, lookahead + 1);
+            return new Success(node, lookahead + 1);
         }
         return undefined;
     }
@@ -550,7 +538,7 @@ class Impl extends Logger {
         const nodes = [];
         if (this.peekPunctuation(lookahead) !== "]") {
             for (;;) {
-                const element = this.parseExpression(lookahead) ?? this.throwUnexpected("Expected array element expression", lookahead);
+                const element = this.parseExpression(lookahead) ?? this.unexpected("Expected array element expression", lookahead);
                 nodes.push(element.node);
                 lookahead = element.lookahead;
                 const punctuation = this.peekPunctuation(lookahead);
@@ -559,18 +547,18 @@ class Impl extends Logger {
                 } else if (punctuation === "]") {
                     break;
                 } else {
-                    this.throwUnexpected("Expected ',' or ']' after array element argument", lookahead);
+                    this.unexpected("Expected ',' or ']' after array element argument", lookahead);
                 }
             }
         }
         assert(this.peekPunctuation(lookahead) === "]");
-        return this.success(Node.createLiteralArray(this.peekLocation(start, lookahead), nodes), lookahead + 1);
+        return new Success(Node.createLiteralArray(this.peekLocation(start, lookahead), nodes), lookahead + 1);
     }
     private expectSemicolon(success: Success): Success {
         if (this.peekPunctuation(success.lookahead) === ";") {
-            return this.success(success.node, success.lookahead + 1);
+            return new Success(success.node, success.lookahead + 1);
         }
-        this.throwUnexpected("Expected semicolon", success.lookahead, ";");
+        this.unexpected("Expected semicolon", success.lookahead, ";");
     }
     private peekKeyword(lookahead: number): string {
         const token = this.input.peek(lookahead);
@@ -607,38 +595,22 @@ class Impl extends Logger {
         }
         return new Location(this.input.source, ...start(lbound), ...end(ubound));
     }
-    private throwUnexpected(message: string, lookahead: number, expected?: string): never {
+    private unexpected(message: string, lookahead: number, expected?: string): never {
         const token = this.input.peek(lookahead);
-        const failure = this.failure(message + ", but got {unexpected} instead", {
+        this.raise(message + ", but got {unexpected} instead", {
             location: new Location(this.input.source, token.line, token.column),
             expected: expected,
             unexpected: token.describe(),
         });
-        this.raise(failure);
     }
-    private failure(message: string, parameters: Message.Parameters): Failure { // WIBBLE
-        return new Failure(message, parameters);
-    }
-    private success(node: Node, lookahead: number): Success {
-        return new Success(node, lookahead);
+    private raise(message: string, parameters: Message.Parameters): never {
+        this.logger.error(message, parameters);
+        throw new ParserException(message, parameters);
     }
     commit(success: Success): Node {
-        assert(success.failed === false);
         this.input.drop(success.lookahead)
         return success.node;
     } 
-    raise(failure: Failure): never {
-        assert(failure.failed === true);
-        assert(failure.logs.length > 0);
-        let severist = failure.logs[0];
-        for (const log of failure.logs) {
-            this.logger.log(log);
-            if (log.severity > severist.severity) {
-                severist = log;
-            }
-        }
-        throw new ParserException(severist.message, severist.parameters);
-    }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
     }

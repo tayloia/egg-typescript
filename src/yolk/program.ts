@@ -140,11 +140,7 @@ class Runner extends Program.Runner {
         if (entry === undefined) {
             this.raise("Variable not found in symbol table (mut): '{symbol}'", {symbol});
         }
-        const result = entry.value.mutate(op, lazy);
-        if (result instanceof Value) {
-            return result;
-        }
-        throw result;
+        return entry.value.mutate(op, lazy).unwrap();
     }
     unimplemented(): never {
         assert.fail("Unimplemented: {caller}", {caller:this.unimplemented});
