@@ -604,8 +604,7 @@ class Impl extends Logger {
         });
     }
     private raise(message: string, parameters: Message.Parameters): never {
-        this.logger.error(message, parameters);
-        throw new ParserException(message, parameters);
+        throw this.logger.exception(new ParserException(message, parameters));
     }
     commit(success: Success): Node {
         this.input.drop(success.lookahead)

@@ -1,7 +1,17 @@
+import { Exception } from "./exception";
 import { Message } from "./message";
 
 export abstract class Logger {
     abstract log(entry: Logger.Entry): void;
+    exception(error: unknown) {
+        const exception = Exception.from(error);
+        if (exception) {
+            this.error(exception.reason, exception.parameters);
+        } else {
+            this.error("Unknown exception: {exception}", {exception: error});
+        }
+        return error;
+    }
     error(message: string, parameters?: Message.Parameters) {
         this.log(new Logger.Entry(Logger.Severity.Error, message, parameters));
     }

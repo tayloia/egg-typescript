@@ -7,7 +7,6 @@ import { Parser } from "../parser";
 import { Program } from "../program";
 import { AssertionError } from "assertion-error";
 import { assert } from "../assertion";
-import { Exception } from "../exception";
 
 export namespace Testing {
     function basePath(mocha: Mocha.Context | Mocha.Suite, depth: number): string {
@@ -103,12 +102,7 @@ export class TestProgram extends TestLogger {
             this.run();
         }
         catch (exception) {
-            const actual = Exception.from(exception);
-            if (actual) {
-                this.error(actual.reason, actual.parameters);
-            } else {
-                this.error(`Unknown exception: ${exception}`, {exception});
-            }
+            this.exception(exception);
         }
         let logged = 0;
         let line = 0;
