@@ -7,7 +7,7 @@ import { Parser } from "../parser";
 import { Program } from "../program";
 import { AssertionError } from "assertion-error";
 import { assert } from "../assertion";
-import { BaseException, Exception } from "../exception";
+import { Exception } from "../exception";
 
 export namespace Testing {
     function basePath(mocha: Mocha.Context | Mocha.Suite, depth: number): string {
@@ -36,8 +36,8 @@ export class TestLogger extends Logger {
     log(entry: Logger.Entry): void {
         this.logged.push(entry);
     }
-    filter(severity: Logger.Severity): string[] {
-        return this.logged.filter(log => log.severity === severity).map(log => log.format())
+    filter(severity: Logger.Severity, prefixLocation: boolean = true): string[] {
+        return this.logged.filter(log => log.severity === severity).map(log => log.format(prefixLocation))
     }
     get errors() {
         return this.filter(Logger.Severity.Error);
@@ -55,21 +55,7 @@ export class TestProgram extends TestLogger {
         super();
     }
     private entryToOutput(entry: Logger.Entry): string {
-        const format = (prefix: string): string => {
-            const origin = entry.parameters?.origin as string | undefined;
-            if (origin) {
-                prefix = "<" + origin + ">" + prefix;
-            }
-            const location = entry.parameters?.location as Exception.Location | undefined;
-            if (location) {
-                const range = (lbound: number, ubound: number): string => {
-                    return lbound < ubound ? `${lbound}-${ubound}` : `${lbound}`;
-                };
-                prefix += (location.source === this.source) ? "<RESOURCE>" : this.source;
-                prefix += `(${range(location.line0, location.line1)},${range(location.column0, location.column1)}): `;
-            }
-            return prefix + entry.format();
-        };
+        const format = (prefix: string): string => "<" + entry.origin + ">" + prefix + entry.format(true).replace(this.source, "<RESOURCE>");
         switch (entry?.severity) {
             case Logger.Severity.Error:
                 return format("<ERROR>");
@@ -117,8 +103,9 @@ export class TestProgram extends TestLogger {
             this.run();
         }
         catch (exception) {
-            if (exception instanceof BaseException) {
-                this.error(exception.message, exception.parameters);
+            const actual = Exception.from(exception);
+            if (actual) {
+                this.error(actual.reason, actual.parameters);
             } else {
                 this.error(`Unknown exception: ${exception}`, {exception});
             }

@@ -1,4 +1,5 @@
-import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
+import { Exception } from "./exception";
+import { Message } from "./message";
 
 function extractCaller(caller: { name: string }): string {
     if (caller) {
@@ -14,13 +15,13 @@ function extractCaller(caller: { name: string }): string {
     return "<UNKNOWN>";
 }
 
-export class AssertionException extends BaseException {
-    constructor(message: string, parameters?: ExceptionParameters) {
-        super("AssertionException", ExceptionOrigin.Assertion, message, parameters);
+export class AssertionException extends Exception {
+    constructor(message: string, parameters?: Message.Parameters) {
+        super(AssertionException.name, Exception.Origin.Assertion, message, parameters);
     }
 }
 
-export function assert(predicate: boolean, message?: string, parameters?: ExceptionParameters) : asserts predicate is true {
+export function assert(predicate: boolean, message?: string, parameters?: Message.Parameters) : asserts predicate is true {
     if (predicate) {
         assert.pass();
     } else {
@@ -31,7 +32,7 @@ export function assert(predicate: boolean, message?: string, parameters?: Except
 assert.pass = function(): void {
 }
 
-assert.fail = function(message?: string, parameters?: ExceptionParameters): never {
+assert.fail = function(message?: string, parameters?: Message.Parameters): never {
     const caller = parameters?.caller as { name: string };
     if (caller) {
         parameters!.caller = extractCaller(caller);
@@ -69,13 +70,13 @@ assert.ge = function(lhs: number, rhs: number): void {
     assert.binop(lhs >= rhs, lhs, rhs, ">=", assert.ge);
 }
 
-assert.falsey = function(value: unknown, message?: string, parameters?: ExceptionParameters): asserts value is undefined | null | false {
+assert.falsey = function(value: unknown, message?: string, parameters?: Message.Parameters): asserts value is undefined | null | false {
     if (value) {
         assert.fail(message ?? `Assertion failure: value not falsey: ${JSON.stringify(value)}`, {value,...parameters,caller:assert.truthy});
     }
 }
 
-assert.truthy = function(value: unknown, message?: string, parameters?: ExceptionParameters): asserts value {
+assert.truthy = function(value: unknown, message?: string, parameters?: Message.Parameters): asserts value {
     if (!value) {
         assert.fail(message ?? `Assertion failure: value not truthy: ${JSON.stringify(value)}`, {value,...parameters,caller:assert.truthy});
     }

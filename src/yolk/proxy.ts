@@ -1,12 +1,12 @@
 import { inspect } from "util";
-import { Exception } from "./exception";
-import { Fallible } from "./fallible";
+import { Exception, RuntimeException } from "./exception";
 import { ToStringOptions, Value } from "./value";
 import { assert } from "./assertion";
+import { Location } from "./location";
 
 abstract class ProxyBase implements Value.Proxy {
-    abstract getProperty(property: string): Fallible<Value>;
-    abstract getIndex(index: Value): Fallible<Value>;
+    abstract getProperty(property: string): Value | Exception;
+    abstract getIndex(index: Value): Value | Exception;
     [inspect.custom]() {
         return this.toDebug();
     }
@@ -23,20 +23,20 @@ export class ProxyArray extends ProxyBase {
     constructor(private elements: Value[]) {
         super();
     }
-    getProperty(property: string): Fallible<Value> {
+    getProperty(property: string): Value | Exception {
         switch (property) {
             case "length":
-                return Fallible.success(Value.fromInt(BigInt(this.elements.length)));
+                return Value.fromInt(BigInt(this.elements.length));
         }
-        return Fallible.failure("Unknown property for type 'ProxyArray': '{property}'", {property});
+        return new RuntimeException("Unknown property for type 'ProxyArray': '{property}'", {property});
     }
-    getIndex(index: Value): Fallible<Value> {
+    getIndex(index: Value): Value | Exception {
         if (index.kind === Value.Kind.Int) {
             const i = index.getInt().toNumber();
             assert(i >= 0 && i < this.elements.length);
-            return Fallible.success(this.elements[i]);
+            return this.elements[i];
         }
-        return Fallible.failure("Indexing is not supported by type 'ProxyArray'", {index});
+        return new RuntimeException("Indexing is not supported by type 'ProxyArray'", {index});
     }
     toUnderlying(): unknown {
         return this;
@@ -50,26 +50,24 @@ export class ProxyArray extends ProxyBase {
 }
 
 export class ProxyPredicateBinary extends ProxyBase {
-    constructor(private value: Value, private lhs: Value, private op: string, private rhs: Value, private location: Exception.Location) {
+    constructor(private value: Value, private lhs: Value, private op: string, private rhs: Value, private location: Location) {
         super();
     }
-    getProperty(property: string): Fallible<Value> {
+    getProperty(property: string): Value | Exception {
         switch (property) {
             case "value":
-                return Fallible.success(this.value);
+                return this.value;
             case "lhs":
-                return Fallible.success(this.lhs);
+                return this.lhs;
             case "op":
-                return Fallible.success(Value.fromString(this.op));
+                return Value.fromString(this.op);
             case "rhs":
-                return Fallible.success(this.rhs);
-            case "location":
-                return Fallible.success(this.rhs);
+                return this.rhs;
         }
-        return Fallible.failure("Unknown property for type 'ProxyPredicateBinary': '{property}'", {property});
+        return new RuntimeException("Unknown property for type 'ProxyPredicateBinary': '{property}'", {property});
     }
-    getIndex(index: Value): Fallible<Value> {
-        return Fallible.failure("Indexing is not supported by type 'ProxyPredicateBinary'", {index});
+    getIndex(index: Value): Value | Exception {
+        return new RuntimeException("Indexing is not supported by type 'ProxyPredicateBinary'", {index});
     }
     toString(): string {
         return `<ProxyPredicateBinary ${this.value} ${this.lhs} ${this.op} ${this.rhs} ${this.location}]`;

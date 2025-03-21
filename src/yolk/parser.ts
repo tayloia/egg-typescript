@@ -1,6 +1,8 @@
 import { assert } from "./assertion";
-import { BaseException, Exception, ExceptionOrigin, ExceptionParameters } from "./exception";
+import { Exception } from "./exception";
+import { Location } from "./location";
 import { ConsoleLogger, Logger } from "./logger";
+import { Message } from "./message";
 import { Tokenizer } from "./tokenizer";
 import { Value } from "./value";
 
@@ -85,51 +87,51 @@ class Input {
 }
 
 class Node implements Parser.Node {
-    private constructor(public location: Exception.Location, public kind: Parser.Kind, public children: Node[] = [], public value: Value = Value.VOID) {}
+    private constructor(public location: Location, public kind: Parser.Kind, public children: Node[] = [], public value: Value = Value.VOID) {}
     static createModule(source: string, children: Node[]): Node {
-        const location = new Exception.Location(source);
+        const location = new Location(source, 0, 0);
         return new Node(location, Parser.Kind.Module, children);
     }
-    static createIdentifier(location: Exception.Location, name: string): Node {
+    static createIdentifier(location: Location, name: string): Node {
         return new Node(location, Parser.Kind.Identifier, [], Value.fromString(name));
     }
-    static createLiteralScalar(location: Exception.Location, value: Value): Node {
+    static createLiteralScalar(location: Location, value: Value): Node {
         return new Node(location, Parser.Kind.LiteralScalar, [], value);
     }
-    static createLiteralArray(location: Exception.Location, elements: Node[]): Node {
+    static createLiteralArray(location: Location, elements: Node[]): Node {
         return new Node(location, Parser.Kind.LiteralArray, elements);
     }
-    static createLiteralObject(location: Exception.Location, members: Node[]): Node {
+    static createLiteralObject(location: Location, members: Node[]): Node {
         return new Node(location, Parser.Kind.LiteralObject, members);
     }
-    static createTypeInfer(location: Exception.Location, nullable: boolean): Node {
+    static createTypeInfer(location: Location, nullable: boolean): Node {
         return new Node(location, Parser.Kind.TypeInfer, [], Value.fromBool(nullable));
     }
-    static createTypeKeyword(location: Exception.Location, keyword: string): Node {
+    static createTypeKeyword(location: Location, keyword: string): Node {
         return new Node(location, Parser.Kind.TypeKeyword, [], Value.fromString(keyword));
     }
-    static createVariableDefinition(location: Exception.Location, identifier: string, type: Node, initializer: Node): Node {
+    static createVariableDefinition(location: Location, identifier: string, type: Node, initializer: Node): Node {
         return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(identifier));
     }
-    static createVariableDeclaration(location: Exception.Location, identifier: string, type: Node): Node {
+    static createVariableDeclaration(location: Location, identifier: string, type: Node): Node {
         return new Node(location, Parser.Kind.Variable, [type], Value.fromString(identifier));
     }
-    static createStatementBlock(location: Exception.Location, statements: Node[]): Node {
+    static createStatementBlock(location: Location, statements: Node[]): Node {
         return new Node(location, Parser.Kind.StatementBlock, statements);
     }
-    static createStatementForeach(location: Exception.Location, identifier: string, type: Node, expression: Node, block: Node): Node {
+    static createStatementForeach(location: Location, identifier: string, type: Node, expression: Node, block: Node): Node {
         return new Node(location, Parser.Kind.StatementForeach, [type, expression, block], Value.fromString(identifier));
     }
-    static createStatementForloop(location: Exception.Location, initialization: Node, condition: Node, advance: Node, block: Node): Node {
+    static createStatementForloop(location: Location, initialization: Node, condition: Node, advance: Node, block: Node): Node {
         return new Node(location, Parser.Kind.StatementForloop, [initialization, condition, advance, block]);
     }
-    static createStatementAssign(location: Exception.Location, lhs: Node, rhs: Node): Node {
+    static createStatementAssign(location: Location, lhs: Node, rhs: Node): Node {
         return new Node(location, Parser.Kind.StatementAssign, [lhs, rhs]);
     }
-    static createStatementMutate(location: Exception.Location, lhs: Node, op: string, rhs: Node): Node {
+    static createStatementMutate(location: Location, lhs: Node, op: string, rhs: Node): Node {
         return new Node(location, Parser.Kind.StatementMutate, [lhs, rhs], Value.fromString(op));
     }
-    static createStatementNudge(location: Exception.Location, op: string, target: Node): Node {
+    static createStatementNudge(location: Location, op: string, target: Node): Node {
         return new Node(location, Parser.Kind.StatementNudge, [target], Value.fromString(op));
     }
     static createPropertyAccess(instance: Node, property: Node): Node {
@@ -146,7 +148,7 @@ class Node implements Parser.Node {
         const location = callee.location.span(fnargs.location);
         return new Node(location, Parser.Kind.FunctionCall, [callee, fnargs]);
     }
-    static createFunctionArguments(location: Exception.Location, nodes: Node[]): Node {
+    static createFunctionArguments(location: Location, nodes: Node[]): Node {
         return new Node(location, Parser.Kind.FunctionArguments, nodes);
     }
     static createOperatorTernary(lhs: Node, mid: Node, rhs: Node, op: string): Node {
@@ -163,7 +165,7 @@ class Node implements Parser.Node {
         const location = lhs.location.span(rhs.location);
         return new Node(location, Parser.Kind.OperatorBinary, [lhs, rhs], Value.fromString(op));
     }
-    static createOperatorUnary(location: Exception.Location, rhs: Node, op: string): Node {
+    static createOperatorUnary(location: Location, rhs: Node, op: string): Node {
         return new Node(location, Parser.Kind.OperatorBinary, [rhs], Value.fromString(op));
     }
 }
@@ -173,15 +175,19 @@ class Success {
     constructor(public node: Node, public lookahead: number) {}
 }
 
-class Failure {
+class Failure { // WIBBLE
     readonly failed = true;
     logs: Logger.Entry[];
-    constructor(message: string, parameters?: Logger.Parameters) {
+    constructor(message: string, parameters?: Message.Parameters) {
         this.logs = [new Logger.Entry(Logger.Severity.Error, message, parameters)];
     }
 }
 
-// TODO type Result = Success | Failure;
+class ParserException extends Exception {
+    constructor(message: string, parameters?: Message.Parameters) {
+        super(ParserException.name, Exception.Origin.Parser, message, parameters);
+    }
+}
 
 class Impl extends Logger {
     constructor(public input: Input, public logger: Logger) {
@@ -190,7 +196,10 @@ class Impl extends Logger {
     expectModule(): Node {
         let incoming = this.input.peek();
         if (incoming.underlying.kind === Tokenizer.Kind.EOF && incoming.previous === Tokenizer.Kind.EOF) {
-            this.fatal("Empty input", { source: this.input.source });
+            const message = "Empty input";
+            const parameters = {location: new Location(this.input.source, 0, 0)};
+            this.logger.error(message, parameters);
+            throw new ParserException(message, parameters);
         }
         const children = [];
         while (incoming.underlying.kind !== Tokenizer.Kind.EOF) {
@@ -229,7 +238,7 @@ class Impl extends Logger {
         const target = this.parseAssignmentTarget(lookahead);
         if (target) {
             if (this.isPunctuation(target.lookahead, "==")) {
-                this.unexpected("Expected assignment operator like '='", target.lookahead);
+                this.throwUnexpected("Expected assignment operator like '='", target.lookahead);
             }
             if (this.isPunctuation(target.lookahead, "=")) {
                 const expr = this.parseExpression(target.lookahead + 1) ?? this.throwUnexpected("Expected expression after assignment '=' operator", target.lookahead + 1);
@@ -584,7 +593,7 @@ class Impl extends Logger {
         }
         return true;
     }
-    private peekLocation(lbound: Token | number, ubound?: Token | number): Exception.Location {
+    private peekLocation(lbound: Token | number, ubound?: Token | number): Location {
         const start = (lookahead: Token | number): [number, number] => {
             const token = (typeof lookahead === "number") ? this.input.peek(lookahead) : lookahead;
             return [token.line, token.column];
@@ -594,25 +603,21 @@ class Impl extends Logger {
             return [token.line, token.column + token.underlying.raw.length - 1];
         }
         if (ubound === undefined) {
-            return new Exception.Location(this.input.source, ...start(lbound), ...end(lbound));
+            return new Location(this.input.source, ...start(lbound), ...end(lbound));
         }
-        return new Exception.Location(this.input.source, ...start(lbound), ...end(ubound));
+        return new Location(this.input.source, ...start(lbound), ...end(ubound));
     }
     private throwUnexpected(message: string, lookahead: number, expected?: string): never {
-        this.throw(this.unexpected(message, lookahead, expected));
-    }
-    private unexpected(message: string, lookahead: number, expected?: string): Failure {
         const token = this.input.peek(lookahead);
-        return this.failure(message + ", but got {unexpected} instead", {
-            source: this.input.source,
-            line: token.line,
-            column: token.column,
+        const failure = this.failure(message + ", but got {unexpected} instead", {
+            location: new Location(this.input.source, token.line, token.column),
             expected: expected,
             unexpected: token.describe(),
         });
+        this.raise(failure);
     }
-    private failure(message: string, parameters: Logger.Parameters): Failure {
-        return new Failure("{location}" + message, parameters);
+    private failure(message: string, parameters: Message.Parameters): Failure { // WIBBLE
+        return new Failure(message, parameters);
     }
     private success(node: Node, lookahead: number): Success {
         return new Success(node, lookahead);
@@ -622,7 +627,7 @@ class Impl extends Logger {
         this.input.drop(success.lookahead)
         return success.node;
     } 
-    throw(failure: Failure): never {
+    raise(failure: Failure): never {
         assert(failure.failed === true);
         assert(failure.logs.length > 0);
         let severist = failure.logs[0];
@@ -632,13 +637,10 @@ class Impl extends Logger {
                 severist = log;
             }
         }
-        throw new Parser.Exception(severist.message, severist.parameters);
+        throw new ParserException(severist.message, severist.parameters);
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
-    }
-    fatal(message: string, parameters: Logger.Parameters): never {
-        this.throw(this.failure(message, parameters));
     }
 }
 
@@ -666,11 +668,6 @@ export class Parser {
 }
 
 export namespace Parser {
-    export class Exception extends BaseException {
-        constructor(message: string, parameters?: ExceptionParameters) {
-            super("ParserException", ExceptionOrigin.Parser, message, parameters);
-        }
-    }
     export enum Kind {
         Module = "module",
         Identifier = "identifier",
@@ -695,7 +692,7 @@ export namespace Parser {
         OperatorUnary = "operator-unary",
     }
     export interface Node {
-        location: Exception.Location;
+        location: Location;
         kind: Kind;
         children: Node[];
         value: Value;

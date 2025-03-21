@@ -1,6 +1,8 @@
 import { assert } from "./assertion";
-import { Exception, ExceptionParameters, RuntimeException } from "./exception";
+import { RuntimeException } from "./exception";
+import { Location } from "./location";
 import { Logger } from "./logger";
+import { Message } from "./message";
 import { SymbolTable } from "./symboltable";
 import { Type } from "./type";
 import { Value } from "./value";
@@ -56,7 +58,7 @@ export namespace Program {
         expectString(index: number) {
             return this.expectUnicode(index).toString();
         }
-        fail(message: string, parameters?: ExceptionParameters): never {
+        fail(message: string, parameters?: Message.Parameters): never {
             if (this.funcname) {
                 throw new RuntimeException(message + " in function call to '{function}()'", { ...parameters, function: this.funcname });
             }
@@ -64,14 +66,14 @@ export namespace Program {
         }
     }
     export abstract class Runner extends Logger {
-        abstract location: Exception.Location;
+        abstract location: Location;
         abstract variableDeclare(symbol: string, type: Type): void;
         abstract variableDefine(symbol: string, type: Type, initializer: Value): void;
         abstract variableGet(symbol: string): Value;
         abstract variableSet(symbol: string, value: Value): void;
         abstract variableMut(symbol: string, op: string, lazy: () => Value): Value;
-        raise(message: string, parameters?: ExceptionParameters): never {
-            throw RuntimeException.at(this.location, message, parameters);
+        raise(message: string, parameters?: Message.Parameters): never {
+            throw new RuntimeException(message, { ...parameters, location: this.location });
         }
     }
     export interface Node {
@@ -87,15 +89,12 @@ class Runner extends Program.Runner {
     constructor(public program: Program, public logger: Logger) {
         super();
         this.variables = new SymbolTable();
-        this.location = new Exception.Location("");
+        this.location = new Location("", 0, 0);
     }
     variables: SymbolTable;
-    location: Exception.Location;
+    location: Location;
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
-    }
-    raise(message: string, parameters?: ExceptionParameters): never {
-        throw RuntimeException.at(this.location, message, parameters);
     }
     run(): void {
         assert.eq(this.program.modules.length, 1);

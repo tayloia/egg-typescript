@@ -1,8 +1,7 @@
 import { inspect } from "util";
 
 import { assert } from "./assertion";
-import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
-import { Fallible } from "./fallible";
+import { Exception, RuntimeException } from "./exception";
 import { ProxyArray } from "./proxy";
 
 export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Proxy;
@@ -16,31 +15,31 @@ export function compareScalar<T>(lhs: T, rhs: T): Comparison {
 type BinaryInt = (lhs: bigint, rhs: bigint) => bigint;
 type BinaryFloat = (lhs: number, rhs: number) => number;
 
-function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf: BinaryFloat): Fallible<Value> {
+function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf: BinaryFloat): Value | Exception {
     switch (lhs.kind) {
         case Value.Kind.Int:
             switch (rhs.kind) {
                 case Value.Kind.Int:
-                    return Fallible.success(Value.fromInt(bi(lhs.asBigint(), rhs.asBigint())));
+                    return Value.fromInt(bi(lhs.asBigint(), rhs.asBigint()));
                 case Value.Kind.Float:
-                    return Fallible.success(Value.fromFloat(bf(lhs.asNumber(), rhs.asNumber())));
+                    return Value.fromFloat(bf(lhs.asNumber(), rhs.asNumber()));
             }
             break;
         case Value.Kind.Float:
             switch (rhs.kind) {
                 case Value.Kind.Int:
-                    return Fallible.success(Value.fromFloat(bf(lhs.asNumber(), rhs.asNumber())));
+                    return Value.fromFloat(bf(lhs.asNumber(), rhs.asNumber()));
                 case Value.Kind.Float:
-                    return Fallible.success(Value.fromFloat(bf(lhs.asNumber(), rhs.asNumber())));
+                    return Value.fromFloat(bf(lhs.asNumber(), rhs.asNumber()));
             }
             break;
         default:
-            return Fallible.failure(
+            return new RuntimeException(
                 "Expected left-hand side of arithmetic operator '{op}' to be an 'int' or 'float', but instead got " + lhs.describe(),
                 {lhs, op, rhs}
             );
     }
-    return Fallible.failure(
+    return new RuntimeException(
         "Expected right-hand side of arithmetic operator '{op}' to be an 'int' or 'float', but instead got " + rhs.describe(),
         {lhs, op, rhs}
     );
@@ -49,31 +48,31 @@ function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf:
 type CompareInt = (lhs: bigint, rhs: bigint) => boolean;
 type CompareFloat = (lhs: number, rhs: number) => boolean;
 
-function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, cf: CompareFloat): Fallible<Value> {
+function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, cf: CompareFloat): Value | Exception {
     switch (lhs.kind) {
         case Value.Kind.Int:
             switch (rhs.kind) {
                 case Value.Kind.Int:
-                    return Fallible.success(Value.fromBool(ci(lhs.asBigint(), rhs.asBigint())));
+                    return Value.fromBool(ci(lhs.asBigint(), rhs.asBigint()));
                 case Value.Kind.Float:
-                    return Fallible.success(Value.fromBool(cf(lhs.asNumber(), rhs.asNumber())));
+                    return Value.fromBool(cf(lhs.asNumber(), rhs.asNumber()));
             }
             break;
         case Value.Kind.Float:
             switch (rhs.kind) {
                 case Value.Kind.Int:
-                    return Fallible.success(Value.fromBool(cf(lhs.asNumber(), rhs.asNumber())));
+                    return Value.fromBool(cf(lhs.asNumber(), rhs.asNumber()));
                 case Value.Kind.Float:
-                    return Fallible.success(Value.fromBool(cf(lhs.asNumber(), rhs.asNumber())));
+                    return Value.fromBool(cf(lhs.asNumber(), rhs.asNumber()));
             }
             break;
         default:
-            return Fallible.failure(
+            return new RuntimeException(
                 "Expected left-hand side of comparison operator '{op}' to be an 'int' or 'float', but instead got " + lhs.describe(),
                 {lhs, op, rhs}
             );
     }
-    return Fallible.failure(
+    return new RuntimeException(
         "Expected right-hand side of comparison operator '{op}' to be an 'int' or 'float', but instead got " + rhs.describe(),
         {lhs, op, rhs}
     );
@@ -218,18 +217,21 @@ export class Value {
         this.assign(value);
         return before;
     }
-    mutate(op: string, lazy: () => Value): Value | Value.Exception {
+    mutate(op: string, lazy: () => Value): Value | Exception {
         switch (op) {
             case "=":
                 return this.swap(lazy());
             case "++":
             case "--":
                 if (this.kind !== Value.Kind.Int) {
-                    return new Value.Exception("Operator '{op}' can only be applied to values of type 'int'", {op, caller:this.mutate});
+                    return new RuntimeException("Operator '{op}' can only be applied to values of type 'int'", {op});
                 }
                 return Value.fromInt(this.getInt().mutate(op));
         }
         assert.fail("Unknown mutating operator: '{op}'", {op, caller:this.mutate});
+    }
+    unwrap(..._: unknown[]): Value {
+        return this;
     }
     static fromVoid() {
         return new Value(null, Value.Kind.Void);
@@ -267,7 +269,7 @@ export class Value {
     static fromArray(elements: Value[]) {
         return Value.fromProxy(new ProxyArray(elements));
     }
-    static binary(lhs: Value, op: string, rhs: Value): Fallible<Value>  {
+    static binary(lhs: Value, op: string, rhs: Value): Value | Exception  {
         switch (op) {
             case "+":
                 return binaryArithmetic(lhs, op, rhs, (a,b)=>a+b, (a,b)=>a+b);
@@ -278,9 +280,9 @@ export class Value {
             case "/":
                 return binaryArithmetic(lhs, op, rhs, (a,b)=>a/b, (a,b)=>a/b);
             case "==":
-                return Fallible.success(Value.fromBool(lhs.equals(rhs)));
+                return Value.fromBool(lhs.equals(rhs));
             case "!=":
-                return Fallible.success(Value.fromBool(!lhs.equals(rhs)));
+                return Value.fromBool(!lhs.equals(rhs));
             case "<":
                 return compareArithmetic(lhs, op, rhs, (a,b)=>a<b, (a,b)=>a<b);
             case "<=":
@@ -542,16 +544,11 @@ export namespace Value {
         }
     }
     export interface Proxy {
-        getProperty(property: string): Fallible<Value>;
-        getIndex(index: Value): Fallible<Value>;
+        getProperty(property: string): Value | Exception;
+        getIndex(index: Value): Value | Exception;
         toUnderlying(): unknown;
         toDebug(): string;
         toString(options_?: ToStringOptions): string;
-    }
-    export class Exception extends BaseException {
-        constructor(message: string, parameters?: ExceptionParameters) {
-            super("ValueException", ExceptionOrigin.Runtime, message, parameters);
-        }
     }
     export enum Kind {
         Void = "void",

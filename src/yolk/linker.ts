@@ -1,8 +1,10 @@
 import { assert } from "./assertion";
 import { Builtins } from "./builtins";
 import { Compiler } from "./compiler";
-import { BaseException, Exception, ExceptionOrigin, ExceptionParameters, RuntimeException } from "./exception";
+import { Exception, RuntimeException } from "./exception";
+import { Location } from "./location";
 import { ConsoleLogger, Logger } from "./logger";
+import { Message } from "./message";
 import { Program } from "./program";
 import { ProxyPredicateBinary } from "./proxy";
 import { Type } from "./type";
@@ -25,7 +27,7 @@ class Resolver extends Logger {
 }
 
 abstract class Node {
-    constructor(public location: Exception.Location) {}
+    constructor(public location: Location) {}
     abstract resolve(resolver: Resolver): Type;
     abstract evaluate(runner: Program.Runner): Value;
     abstract execute(runner: Program.Runner): void;
@@ -34,8 +36,8 @@ abstract class Node {
     predicate(runner: Program.Runner): Value {
         return this.evaluate(runner);
     }
-    raise(message: string, parameters?: ExceptionParameters): never {
-        throw RuntimeException.at(this.location, message, parameters);
+    raise(message: string, parameters?: Message.Parameters): never {
+        throw new RuntimeException(message, { ...parameters, location: this.location });
     }
     unimplemented(that: Program.Runner | Resolver): never {
         if (that instanceof Program.Runner) {
@@ -46,7 +48,7 @@ abstract class Node {
 }
 
 class Node_Module extends Node {
-    constructor(location: Exception.Location, public children: Node[]) {
+    constructor(location: Location, public children: Node[]) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -70,7 +72,7 @@ class Node_Module extends Node {
 }
 
 class Node_StmtBlock extends Node {
-    constructor(location: Exception.Location, public children: Node[]) {
+    constructor(location: Location, public children: Node[]) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -94,7 +96,7 @@ class Node_StmtBlock extends Node {
 }
 
 class Node_StmtCall extends Node {
-    constructor(location: Exception.Location, public children: Node[]) {
+    constructor(location: Location, public children: Node[]) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -121,7 +123,7 @@ class Node_StmtCall extends Node {
 }
 
 class Node_StmtVariableDefine extends Node {
-    constructor(location: Exception.Location, public identifier: string, public type: Type, public initializer: Node) {
+    constructor(location: Location, public identifier: string, public type: Type, public initializer: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -144,7 +146,7 @@ class Node_StmtVariableDefine extends Node {
 }
 
 class Node_StmtAssign extends Node {
-    constructor(location: Exception.Location, public target: Node, public expr: Node) {
+    constructor(location: Location, public target: Node, public expr: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -166,7 +168,7 @@ class Node_StmtAssign extends Node {
 }
 
 class Node_StmtMutate extends Node {
-    constructor(location: Exception.Location, public op: string, public target: Node, public expr: Node) {
+    constructor(location: Location, public op: string, public target: Node, public expr: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -188,7 +190,7 @@ class Node_StmtMutate extends Node {
 }
 
 class Node_StmtNudge extends Node {
-    constructor(location: Exception.Location, public op: string, public target: Node) {
+    constructor(location: Location, public op: string, public target: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -210,7 +212,7 @@ class Node_StmtNudge extends Node {
 }
 
 class Node_StmtForeach extends Node {
-    constructor(location: Exception.Location, public identifier: string, public type: Type, public expr: Node, public block: Node) {
+    constructor(location: Location, public identifier: string, public type: Type, public expr: Node, public block: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -240,7 +242,7 @@ class Node_StmtForeach extends Node {
 }
 
 class Node_StmtForloop extends Node {
-    constructor(location: Exception.Location, public initialization: Node, public condition: Node, public advance: Node, public block: Node) {
+    constructor(location: Location, public initialization: Node, public condition: Node, public advance: Node, public block: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -269,7 +271,7 @@ class Node_StmtForloop extends Node {
 }
 
 class Node_LiteralIdentifier extends Node {
-    constructor(location: Exception.Location, public identifier: string) {
+    constructor(location: Location, public identifier: string) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -290,10 +292,10 @@ class Node_LiteralIdentifier extends Node {
                     lhs: Value;
                     op: string;
                     rhs: Value;
-                    location: Exception.Location;
+                    location: Location;
                 };
                 if (!proxy.value.asBoolean()) {
-                    throw new RuntimeException("{location}Assertion is untrue: {lhs} {op} {rhs}", proxy);
+                    throw new RuntimeException("Assertion is untrue: {lhs} {op} {rhs}", proxy);
                 }
                 return Value.VOID;
             };
@@ -313,7 +315,7 @@ class Node_LiteralIdentifier extends Node {
 }
 
 class Node_ValuePropertyGet extends Node {
-    constructor(location: Exception.Location, public instance: Node, public property: string) {
+    constructor(location: Location, public instance: Node, public property: string) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -348,7 +350,7 @@ class Node_ValuePropertyGet extends Node {
 }
 
 class Node_ValueIndexGet extends Node {
-    constructor(location: Exception.Location, public instance: Node, public index: Node) {
+    constructor(location: Location, public instance: Node, public index: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -384,7 +386,7 @@ class Node_ValueIndexGet extends Node {
 }
 
 abstract class Node_TypeLiteral extends Node {
-    constructor(location: Exception.Location) {
+    constructor(location: Location) {
         super(location);
     }
     evaluate(runner: Program.Runner): Value {
@@ -399,7 +401,7 @@ abstract class Node_TypeLiteral extends Node {
 }
 
 class Node_TypeLiteral_Void extends Node_TypeLiteral {
-    constructor(location: Exception.Location) {
+    constructor(location: Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -411,7 +413,7 @@ class Node_TypeLiteral_Void extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Bool extends Node_TypeLiteral {
-    constructor(location: Exception.Location) {
+    constructor(location: Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -423,7 +425,7 @@ class Node_TypeLiteral_Bool extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Int extends Node_TypeLiteral {
-    constructor(location: Exception.Location) {
+    constructor(location: Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -435,7 +437,7 @@ class Node_TypeLiteral_Int extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Float extends Node_TypeLiteral {
-    constructor(location: Exception.Location) {
+    constructor(location: Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -447,7 +449,7 @@ class Node_TypeLiteral_Float extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_String extends Node_TypeLiteral {
-    constructor(location: Exception.Location) {
+    constructor(location: Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -459,7 +461,7 @@ class Node_TypeLiteral_String extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Object extends Node_TypeLiteral {
-    constructor(location: Exception.Location) {
+    constructor(location: Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -471,7 +473,7 @@ class Node_TypeLiteral_Object extends Node_TypeLiteral {
 }
 
 class Node_TypeLiteral_Any extends Node_TypeLiteral {
-    constructor(location: Exception.Location) {
+    constructor(location: Location) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -483,7 +485,7 @@ class Node_TypeLiteral_Any extends Node_TypeLiteral {
 }
 
 class Node_ValueScalar extends Node {
-    constructor(location: Exception.Location, private value: Value) {
+    constructor(location: Location, private value: Value) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -516,7 +518,7 @@ class Node_ValueScalar extends Node {
 }
 
 class Node_ValueArray extends Node {
-    constructor(location: Exception.Location, private nodes: Node[]) {
+    constructor(location: Location, private nodes: Node[]) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -538,7 +540,7 @@ class Node_ValueArray extends Node {
 }
 
 class Node_ValueCall extends Node {
-    constructor(location: Exception.Location, public children: Node[]) {
+    constructor(location: Location, public children: Node[]) {
         super(location);
     }
     resolve(resolver_: Resolver): Type {
@@ -567,7 +569,7 @@ class Node_ValueCall extends Node {
 }
 
 class Node_ValueOperatorBinary extends Node {
-    constructor(location: Exception.Location, public lhs: Node, public op: string, public rhs: Node) {
+    constructor(location: Location, public lhs: Node, public op: string, public rhs: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -598,7 +600,7 @@ class Node_ValueOperatorBinary extends Node {
 }
 
 class Node_ValuePredicate extends Node {
-    constructor(location: Exception.Location, public child: Node) {
+    constructor(location: Location, public child: Node) {
         super(location);
     }
     resolve(resolver: Resolver): Type {
@@ -803,10 +805,8 @@ export class Linker {
     }
 }
 
-export namespace Linker {
-    export class Exception extends BaseException {
-        constructor(message: string, parameters?: ExceptionParameters) {
-            super("LinkerException", ExceptionOrigin.Linker, message, parameters);
-        }
+export class LinkerException extends Exception {
+    constructor(message: string, parameters?: Message.Parameters) {
+        super(LinkerException.name, Exception.Origin.Linker, message, parameters);
     }
 }

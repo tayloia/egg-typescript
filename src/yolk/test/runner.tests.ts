@@ -1,7 +1,7 @@
 import { expect } from "chai";
 
 import { Testing, TestProgram } from "./testing";
-import { BaseException } from "../exception";
+import { Exception } from "../exception";
 
 describe("Runner", function() {
     describe("fromString", function() {
@@ -23,9 +23,10 @@ describe("Runner", function() {
                     test.run();
                     expect.fail(undefined, expected, `Expected exception '${expected}', but none was thrown`);
                 }
-                catch (actual) {
-                    if (actual instanceof BaseException) {
-                        expect(actual.message).equals(expected);
+                catch (exception) {
+                    const actual = Exception.from(exception);
+                    if (actual) {
+                        expect(actual.format(false)).equals(expected);
                     } else {
                         throw actual;
                     }

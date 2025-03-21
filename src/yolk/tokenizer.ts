@@ -1,7 +1,9 @@
 import * as fs from "fs";
 
 import { assert } from "./assertion";
-import { BaseException, ExceptionOrigin, ExceptionParameters } from "./exception";
+import { Exception } from "./exception";
+import { Location } from "./location";
+import { Message } from "./message";
 
 function isLineSeparator(codepoint: number): boolean {
     switch (codepoint) {
@@ -117,6 +119,12 @@ class Peeker {
     }
 }
 
+class TokenizerException extends Exception {
+    constructor(message: string, parameters?: Message.Parameters) {
+        super(TokenizerException.name, Exception.Origin.Tokenizer, message, parameters);
+    }
+}
+
 export class Tokenizer {
     private constructor(public peeker: Peeker) {}
     take(): Tokenizer.Token {
@@ -125,7 +133,8 @@ export class Tokenizer {
             return new Tokenizer.Token(kind, raw, value, initial.line, initial.column);
         }
         const fail = (message: string, line: number, column: number) => {
-            throw new Tokenizer.Exception("{location}" + message, { line, column });
+            const location = new Location(this.peeker.input.source ?? "", line, column);
+            throw new TokenizerException(message, {location});
         }
         if (initial.codepoint < 0) {
             return success(Tokenizer.Kind.EOF, "", -1);
@@ -366,11 +375,6 @@ export class Tokenizer {
 }
 
 export namespace Tokenizer {
-    export class Exception extends BaseException {
-        constructor(message: string, parameters?: ExceptionParameters) {
-            super("TokenizerException", ExceptionOrigin.Tokenizer, message, parameters);
-        }
-    }
     export enum Kind {
         Whitespace,
         Comment,

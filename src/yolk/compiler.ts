@@ -1,11 +1,11 @@
 import { assert } from "./assertion";
-import { BaseException, Exception, ExceptionOrigin, ExceptionParameters } from "./exception";
 import { Logger } from "./logger";
+import { Location } from "./location";
 import { Parser } from "./parser";
 import { Value } from "./value";
 
 class Node implements Compiler.Node {
-    constructor(public location: Exception.Location, public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: Value = Value.VOID) {}
+    constructor(public location: Location, public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: Value = Value.VOID) {}
 }
 
 class Module implements Compiler.Module {
@@ -177,11 +177,6 @@ export class Compiler {
 }
 
 export namespace Compiler {
-    export class Exception extends BaseException {
-        constructor(message: string, parameters?: ExceptionParameters) {
-            super("CompilerException", ExceptionOrigin.Compiler, message, parameters);
-        }
-    }
     export enum Kind {
         Module = "module",
         StmtBlock = "stmt-block",
@@ -208,7 +203,7 @@ export namespace Compiler {
         kind: Kind;
         children: Node[];
         value: Value;
-        location: Exception.Location;
+        location: Location;
     }
     export interface Module {
         root: Node;
