@@ -446,6 +446,7 @@ class Impl extends Logger {
             ?? this.parseFloatLiteral(lookahead)
             ?? this.parseStringLiteral(lookahead)
             ?? this.parseArrayLiteral(lookahead)
+            ?? this.parseObjectLiteral(lookahead)
             ?? this.parseTypeKeyword(lookahead)
             ?? this.parseIdentifier(lookahead);
     }
@@ -543,16 +544,40 @@ class Impl extends Logger {
                 lookahead = element.lookahead;
                 const punctuation = this.peekPunctuation(lookahead);
                 if (punctuation === ",") {
-                    lookahead++;
+                    ++lookahead;
                 } else if (punctuation === "]") {
                     break;
                 } else {
-                    this.unexpected("Expected ',' or ']' after array element argument", lookahead);
+                    this.unexpected("Expected ',' or ']' after array element", lookahead);
                 }
             }
         }
         assert(this.peekPunctuation(lookahead) === "]");
         return new Success(Node.createLiteralArray(this.peekLocation(start, lookahead), nodes), lookahead + 1);
+    }
+    private parseObjectLiteral(lookahead: number): Success | undefined {
+        if (this.peekPunctuation(lookahead) !== "{") {
+            return undefined;
+        }
+        const start = lookahead++;
+        const nodes = [];
+        if (this.peekPunctuation(lookahead) !== "}") {
+            for (;;) {
+                const element = this.parseExpression(lookahead) ?? this.unexpected("Expected object element expression", lookahead);
+                nodes.push(element.node);
+                lookahead = element.lookahead;
+                const punctuation = this.peekPunctuation(lookahead);
+                if (punctuation === ",") {
+                    ++lookahead;
+                } else if (punctuation === "}") {
+                    break;
+                } else {
+                    this.unexpected("Expected ',' or ']' after object element", lookahead);
+                }
+            }
+        }
+        assert(this.peekPunctuation(lookahead) === "}");
+        return new Success(Node.createLiteralObject(this.peekLocation(start, lookahead), nodes), lookahead + 1);
     }
     private expectSemicolon(success: Success): Success {
         if (this.peekPunctuation(success.lookahead) === ";") {

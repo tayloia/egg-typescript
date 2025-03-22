@@ -23,7 +23,7 @@ abstract class ProxyBase implements Value.Proxy {
     abstract toString(): string;
 }
 
-export class ProxyArray extends ProxyBase {
+export class ProxyVanillaArray extends ProxyBase {
     constructor(private elements: Value[]) {
         super();
     }
@@ -32,17 +32,17 @@ export class ProxyArray extends ProxyBase {
             case "length":
                 return Value.fromInt(BigInt(this.elements.length));
         }
-        return new RuntimeException("Unknown property for type 'ProxyArray': '{property}'", {property});
+        return new RuntimeException("Unknown property for type 'ProxyVanillaArray': '{property}'", {property});
     }
     setProperty(property: string, value: Value): Value | Exception {
         switch (property) {
             case "length":
                 return this.setLength(value.getInt().toNumber());
         }
-        return new RuntimeException("Property modification is not supported for type 'ProxyArray': '{property}'", {property, value});
+        return new RuntimeException("Property modification is not supported for type 'ProxyVanillaArray': '{property}'", {property, value});
     }
     mutProperty(property: string, op: string, lazy_: () => Value): Value | Exception {
-        return new RuntimeException("Property mutation is not supported for type 'ProxyArray': '{property}'", {property, op});
+        return new RuntimeException("Property mutation is not supported for type 'ProxyVanillaArray': '{property}'", {property, op});
     }
     getIndex(index: Value): Value | Exception {
         if (index.kind === Value.Kind.Int) {
@@ -50,17 +50,17 @@ export class ProxyArray extends ProxyBase {
             assert(i >= 0 && i < this.elements.length);
             return this.elements[i];
         }
-        return new RuntimeException("Indexing is not supported by type 'ProxyArray'", {index});
+        return new RuntimeException("Indexing is not supported by type 'ProxyVanillaArray'", {index});
     }
     setIndex(index: Value, value: Value): Value | Exception {
         this.elements[index.asNumber()] = value;
         return Value.VOID;
     }
     mutIndex(index: Value, op: string, lazy_: () => Value): Value | Exception {
-        return new RuntimeException("Index mutation is not supported for type 'ProxyArray': '{property}'", {index, op});
+        return new RuntimeException("Index mutation is not supported for type 'ProxyVanillaArray': '{property}'", {index, op});
     }
     toUnderlying(): unknown {
-        return this;
+        return this.elements;
     }
     toString(): string {
         const options: ToStringOptions = {
@@ -75,6 +75,42 @@ export class ProxyArray extends ProxyBase {
             this.elements[fill++] = Value.fromNull();
         }
         return Value.VOID;
+    }
+}
+
+export class ProxyVanillaObject extends ProxyBase {
+    constructor(private elements: Map<Value, Value>) {
+        super();
+    }
+    getProperty(property: string): Value | Exception {
+        const key = Value.fromString(property);
+        return this.elements.get(key) ?? new RuntimeException("Unknown property for type 'ProxyVanillaObject': '{property}'", {property});
+    }
+    setProperty(property: string, value: Value): Value | Exception {
+        const key = Value.fromString(property);
+        this.elements.set(key, value);
+        return Value.VOID;
+    }
+    mutProperty(property: string, op: string, lazy_: () => Value): Value | Exception {
+        return new RuntimeException("Property mutation is not supported for type 'ProxyVanillaObject': '{property}'", {property, op});
+    }
+    getIndex(index: Value): Value | Exception {
+        return new RuntimeException("Indexing is not supported by type 'ProxyVanillaObject'", {index});
+    }
+    setIndex(index: Value, value_: Value): Value | Exception {
+        return new RuntimeException("Index modification is not supported by type 'ProxyVanillaObject'", {index});
+    }
+    mutIndex(index: Value, op: string, lazy_: () => Value): Value | Exception {
+        return new RuntimeException("Index mutation is not supported for type 'ProxyVanillaObject': '{property}'", {index, op});
+    }
+    toUnderlying(): unknown {
+        return this.elements;
+    }
+    toString(): string {
+        const options: ToStringOptions = {
+            quoteString: "\"",
+        }
+        return "{" + [...this.elements].map(([key, value]) => key.toString() + ":" + value.toString(options)).join(",") + "}";
     }
 }
 

@@ -2,7 +2,7 @@ import { inspect } from "util";
 
 import { assert } from "./assertion";
 import { Exception, RuntimeException } from "./exception";
-import { ProxyArray } from "./proxy";
+import { ProxyVanillaArray, ProxyVanillaObject } from "./proxy";
 
 export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Proxy;
 
@@ -266,8 +266,11 @@ export class Value {
     static fromProxy(value: Value.Proxy) {
         return new Value(value, Value.Kind.Proxy);
     }
-    static fromArray(elements: Value[]) {
-        return Value.fromProxy(new ProxyArray(elements));
+    static fromVanillaArray(elements: Array<Value>) {
+        return Value.fromProxy(new ProxyVanillaArray(elements));
+    }
+    static fromVanillaObject(elements: Map<Value, Value>) {
+        return Value.fromProxy(new ProxyVanillaObject(elements));
     }
     static binary(lhs: Value, op: string, rhs: Value): Value | Exception  {
         switch (op) {

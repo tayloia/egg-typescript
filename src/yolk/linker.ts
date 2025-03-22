@@ -26,13 +26,20 @@ class Resolver extends Logger {
     }
 }
 
+class KeyValue {
+    constructor(public readonly key: Value, public readonly value: Value) {}
+}
+
 abstract class Node {
     constructor(public location: Location) {}
     abstract resolve(resolver: Resolver): Type;
     abstract evaluate(runner: Program.Runner): Value;
     abstract execute(runner: Program.Runner): void;
     abstract callsite(runner: Program.Runner): Program.Callsite;
-    abstract mutate(runner: Program.Runner, op: string, expr: Node): void;
+    abstract modify(runner: Program.Runner, op: string, expr: Node): Value;
+    keyvalue(runner: Program.Runner): KeyValue {
+        return new KeyValue(Value.VOID, this.evaluate(runner));
+    }
     predicate(runner: Program.Runner): Value {
         return this.evaluate(runner);
     }
@@ -66,7 +73,7 @@ class Node_Module extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -90,7 +97,7 @@ class Node_StmtBlock extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -117,7 +124,7 @@ class Node_StmtCall extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -140,7 +147,7 @@ class Node_StmtVariableDefine extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -157,12 +164,12 @@ class Node_StmtAssign extends Node {
     }
     execute(runner: Program.Runner): void {
         runner.location = this.location;
-        this.target.mutate(runner, "=", this.expr);
+        this.target.modify(runner, "", this.expr);
     }
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -179,12 +186,12 @@ class Node_StmtMutate extends Node {
     }
     execute(runner: Program.Runner): void {
         runner.location = this.location;
-        this.target.mutate(runner, this.op, this.expr);
+        this.target.modify(runner, this.op, this.expr);
     }
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -201,12 +208,12 @@ class Node_StmtNudge extends Node {
     }
     execute(runner: Program.Runner): void {
         runner.location = this.location;
-        this.target.mutate(runner, this.op, this.target);
+        this.target.modify(runner, this.op, this.target);
     }
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -236,7 +243,7 @@ class Node_StmtForeach extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -265,7 +272,7 @@ class Node_StmtForloop extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -309,7 +316,7 @@ class Node_ValueVariableGet extends Node {
         }
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -344,7 +351,7 @@ class Node_ValuePropertyGet extends Node {
         }
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -380,7 +387,7 @@ class Node_ValueIndexGet extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -395,7 +402,7 @@ abstract class Node_TypeLiteral extends Node {
     execute(runner: Program.Runner): void {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -500,7 +507,11 @@ class Node_TargetVariable extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op: string, expr: Node): Value {
+    modify(runner: Program.Runner, op: string, expr: Node): Value {
+        if (op === "") {
+            runner.variableSet(this.identifier, expr.evaluate(runner));
+            return Value.VOID;
+        }
         return runner.variableMut(this.identifier, op, () => expr.evaluate(runner));
     }
 }
@@ -521,7 +532,7 @@ class Node_TargetProperty extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op: string, expr: Node): Value {
+    modify(runner: Program.Runner, op: string, expr: Node): Value {
         const location = runner.location;
         const instance = this.instance.evaluate(runner);
         if (instance.kind === Value.Kind.String) {
@@ -530,7 +541,7 @@ class Node_TargetProperty extends Node {
         }
         if (instance.kind === Value.Kind.Proxy) {
             const property = this.property.evaluate(runner).asString();
-            if (op === "=") {
+            if (op === "") {
                 const value = expr.evaluate(runner);
                 return instance.getProxy().setProperty(property, value).unwrap(location);
             }
@@ -556,12 +567,12 @@ class Node_TargetIndex extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op: string, expr: Node): Value {
+    modify(runner: Program.Runner, op: string, expr: Node): Value {
         const instance = this.instance.evaluate(runner);
         if (instance.kind === Value.Kind.Proxy) {
             const index = this.index.evaluate(runner);
             runner.location = this.location;
-            if (op === "=") {
+            if (op === "") {
                 const value = expr.evaluate(runner);
                 return instance.getProxy().setIndex(index, value).unwrap(this.location);
             }
@@ -599,7 +610,7 @@ class Node_ValueScalar extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -612,8 +623,13 @@ class Node_ValueArray extends Node {
         return Type.OBJECT;
     }
     evaluate(runner: Program.Runner): Value {
-        const values = this.nodes.map(node => node.evaluate(runner));
-        return Value.fromArray(values);
+        const elements = new Array<Value>();
+        for (const node of this.nodes) {
+            const kv = node.keyvalue(runner);
+            assert(kv.key.isVoid());
+            elements.push(kv.value);
+        }
+        return Value.fromVanillaArray(elements);
     }
     execute(runner: Program.Runner): void {
         this.unimplemented(runner);
@@ -621,7 +637,34 @@ class Node_ValueArray extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_ValueObject extends Node {
+    constructor(location: Location, private nodes: Node[]) {
+        super(location);
+    }
+    resolve(resolver_: Resolver): Type {
+        return Type.OBJECT;
+    }
+    evaluate(runner: Program.Runner): Value {
+        const elements = new Map<Value, Value>();
+        for (const node of this.nodes) {
+            const kv = node.keyvalue(runner);
+            assert(!kv.key.isVoid());
+            elements.set(kv.key, kv.value);
+        }
+        return Value.fromVanillaObject(elements);
+    }
+    execute(runner: Program.Runner): void {
+        this.unimplemented(runner);
+    }
+    callsite(runner: Program.Runner): Program.Callsite {
+        this.unimplemented(runner);
+    }
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -650,7 +693,7 @@ class Node_ValueCall extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -674,7 +717,7 @@ class Node_ValueOperatorBinary extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
     predicate(runner: Program.Runner): Value {
@@ -702,7 +745,7 @@ class Node_ValuePredicate extends Node {
     callsite(runner: Program.Runner): Program.Callsite {
         this.unimplemented(runner);
     }
-    mutate(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -768,6 +811,8 @@ class Impl extends Logger {
                 return new Node_ValueScalar(node.location, node.value);
             case Compiler.Kind.ValueArray:
                 return new Node_ValueArray(node.location, this.linkNodes(node.children));
+            case Compiler.Kind.ValueObject:
+                return new Node_ValueObject(node.location, this.linkNodes(node.children));
             case Compiler.Kind.ValueCall:
                 assert.ge(node.children.length, 1);
                 return new Node_ValueCall(node.location, this.linkNodes(node.children));
