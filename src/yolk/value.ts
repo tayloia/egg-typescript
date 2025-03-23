@@ -3,6 +3,8 @@ import { inspect } from "util";
 import { assert } from "./assertion";
 import { Exception, RuntimeException } from "./exception";
 import { ProxyVanillaArray, ProxyVanillaObject } from "./proxy";
+import { Program } from "./program";
+import { ValueMap } from "./valuemap";
 
 export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Proxy;
 
@@ -230,6 +232,12 @@ export class Value {
         }
         assert.fail("Unknown mutating operator: '{op}'", {op, caller:this.mutate});
     }
+    invoke(runner: Program.Runner, args: Program.Arguments): Value | Exception {
+        if (this.kind !== Value.Kind.Proxy) {
+            return new RuntimeException("Function invocation '()' is not supported by " + this.describe());
+        }
+        return this.getProxy().invoke(runner, args);
+    }
     unwrap(..._: unknown[]): Value {
         return this;
     }
@@ -269,7 +277,7 @@ export class Value {
     static fromVanillaArray(elements: Array<Value>) {
         return Value.fromProxy(new ProxyVanillaArray(elements));
     }
-    static fromVanillaObject(elements: Map<Value, Value>) {
+    static fromVanillaObject(elements: ValueMap) {
         return Value.fromProxy(new ProxyVanillaObject(elements));
     }
     static binary(lhs: Value, op: string, rhs: Value): Value | Exception  {
@@ -550,12 +558,16 @@ export namespace Value {
         getProperty(property: string): Value | Exception;
         setProperty(property: string, value: Value): Value | Exception;
         mutProperty(property: string, op: string, lazy: () => Value): Value | Exception;
+        delProperty(property: string): Value | Exception;
         getIndex(index: Value): Value | Exception;
         setIndex(index: Value, value: Value): Value | Exception;
         mutIndex(index: Value, op: string, lazy: () => Value): Value | Exception;
+        delIndex(index: Value): Value | Exception;
+        invoke(runner: Program.Runner, args: Program.Arguments): Value | Exception;
         toUnderlying(): unknown;
         toDebug(): string;
         toString(options_?: ToStringOptions): string;
+        describe(): string;
     }
     export enum Kind {
         Void = "void",

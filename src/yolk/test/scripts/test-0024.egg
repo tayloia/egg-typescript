@@ -7,6 +7,6 @@ print(a);
 a.i = "hello";
 print(a);
 ///>{p:123,i:"hello"}
-//TODO assert(object.property.del(a, "p") == 123);
-//TODO print(a);
-//TODO ///>{i:"hello"}
+assert(object.property.del(a, "p") == 123);
+print(a);
+///>{i:"hello"}

@@ -1,16 +1,41 @@
 import { inspect } from "util";
-import { Exception, RuntimeException } from "./exception";
-import { ToStringOptions, Value } from "./value";
+
 import { assert } from "./assertion";
+import { Exception, RuntimeException } from "./exception";
 import { Location } from "./location";
+import { ToStringOptions, Value } from "./value";
+import { Program } from "./program";
+import { Message } from "./message";
+import { ValueMap } from "./valuemap";
 
 abstract class ProxyBase implements Value.Proxy {
-    abstract getProperty(property: string): Value | Exception;
-    abstract setProperty(property: string, value: Value): Value | Exception;
-    abstract mutProperty(property: string, op: string, lazy: () => Value): Value | Exception;
-    abstract getIndex(index: Value): Value | Exception;
-    abstract setIndex(index: Value, value: Value): Value | Exception;
-    abstract mutIndex(index: Value, op: string, lazy: () => Value): Value | Exception;
+    getProperty(property: string): Value | Exception {
+        return this.unsupported("Properties are", {property});
+    }
+    setProperty(property: string, value_: Value): Value | Exception {
+        return this.unsupported("Property modification is", {property});
+    }
+    mutProperty(property: string, op_: string, lazy_: () => Value): Value | Exception {
+        return this.unsupported("Property mutation is", {property});
+    }
+    delProperty(property: string): Value | Exception {
+        return this.unsupported("Property deletion is", {property});
+    }
+    getIndex(index: Value): Value | Exception {
+        return this.unsupported("Indexing is", {index});
+    }
+    setIndex(index: Value, value_: Value): Value | Exception {
+        return this.unsupported("Modification by index is", {index});
+    }
+    mutIndex(index: Value, op_: string, lazy_: () => Value): Value | Exception {
+        return this.unsupported("Mutation by index is", {index});
+    }
+    delIndex(index: Value): Value | Exception {
+        return this.unsupported("Deletion by index is", {index});
+    }
+    invoke(runner_: Program.Runner, args_: Program.Arguments): Value | Exception {
+        return this.unsupported("Function invocation '()' is");
+    }
     [inspect.custom]() {
         return this.toDebug();
     }
@@ -21,6 +46,13 @@ abstract class ProxyBase implements Value.Proxy {
         return this.toString();
     }
     abstract toString(): string;
+    abstract describe(): string;
+    protected unknown(property: string, parameters?: Message.Parameters): Exception {
+        return new RuntimeException(`Unknown property '{property}' for ${this.describe()}`, { ...parameters, property });
+    }
+    protected unsupported(message: string, parameters?: Message.Parameters): Exception {
+        return new RuntimeException(`${message} not supported by ${this.describe()}`, parameters);
+    }
 }
 
 export class ProxyVanillaArray extends ProxyBase {
@@ -32,17 +64,14 @@ export class ProxyVanillaArray extends ProxyBase {
             case "length":
                 return Value.fromInt(BigInt(this.elements.length));
         }
-        return new RuntimeException("Unknown property for type 'ProxyVanillaArray': '{property}'", {property});
+        return this.unknown(property);
     }
     setProperty(property: string, value: Value): Value | Exception {
         switch (property) {
             case "length":
                 return this.setLength(value.getInt().toNumber());
         }
-        return new RuntimeException("Property modification is not supported for type 'ProxyVanillaArray': '{property}'", {property, value});
-    }
-    mutProperty(property: string, op: string, lazy_: () => Value): Value | Exception {
-        return new RuntimeException("Property mutation is not supported for type 'ProxyVanillaArray': '{property}'", {property, op});
+        return this.unsupported("Modification of property '{property}' is", {property, value})
     }
     getIndex(index: Value): Value | Exception {
         if (index.kind === Value.Kind.Int) {
@@ -56,9 +85,6 @@ export class ProxyVanillaArray extends ProxyBase {
         this.elements[index.asNumber()] = value;
         return Value.VOID;
     }
-    mutIndex(index: Value, op: string, lazy_: () => Value): Value | Exception {
-        return new RuntimeException("Index mutation is not supported for type 'ProxyVanillaArray': '{property}'", {index, op});
-    }
     toUnderlying(): unknown {
         return this.elements;
     }
@@ -67,6 +93,9 @@ export class ProxyVanillaArray extends ProxyBase {
             quoteString: "\"",
         }
         return "[" + this.elements.map(element => element.toString(options)).join(",") + "]";
+    }
+    describe(): string {
+        return "an array value";
     }
     private setLength(length: number): Value | Exception {
         let fill = this.elements.length;
@@ -79,38 +108,39 @@ export class ProxyVanillaArray extends ProxyBase {
 }
 
 export class ProxyVanillaObject extends ProxyBase {
-    constructor(private elements: Map<Value, Value>) {
+    constructor(private entries: ValueMap) {
         super();
     }
     getProperty(property: string): Value | Exception {
         const key = Value.fromString(property);
-        return this.elements.get(key) ?? new RuntimeException("Unknown property for type 'ProxyVanillaObject': '{property}'", {property});
+        return this.entries.get(key) ?? new RuntimeException("Unknown property for type 'ProxyVanillaObject': '{property}'", {property});
     }
     setProperty(property: string, value: Value): Value | Exception {
         const key = Value.fromString(property);
-        this.elements.set(key, value);
+        this.entries.set(key, value);
         return Value.VOID;
     }
-    mutProperty(property: string, op: string, lazy_: () => Value): Value | Exception {
-        return new RuntimeException("Property mutation is not supported for type 'ProxyVanillaObject': '{property}'", {property, op});
-    }
-    getIndex(index: Value): Value | Exception {
-        return new RuntimeException("Indexing is not supported by type 'ProxyVanillaObject'", {index});
-    }
-    setIndex(index: Value, value_: Value): Value | Exception {
-        return new RuntimeException("Index modification is not supported by type 'ProxyVanillaObject'", {index});
-    }
-    mutIndex(index: Value, op: string, lazy_: () => Value): Value | Exception {
-        return new RuntimeException("Index mutation is not supported for type 'ProxyVanillaObject': '{property}'", {index, op});
+    delProperty(property: string): Value | Exception {
+        const key = Value.fromString(property);
+        const value = this.entries.get(key);
+        if (value) {
+            this.entries.delete(key);
+            return value;
+        }
+        return Value.VOID;
+
     }
     toUnderlying(): unknown {
-        return this.elements;
+        return this.entries;
     }
     toString(): string {
         const options: ToStringOptions = {
             quoteString: "\"",
         }
-        return "{" + [...this.elements].map(([key, value]) => key.toString() + ":" + value.toString(options)).join(",") + "}";
+        return "{" + this.entries.unordered(kv => kv.key.toString() + ":" + kv.value.toString(options)).join(",") + "}";
+    }
+    describe(): string {
+        return "a value of type 'object'";
     }
 }
 
@@ -129,24 +159,15 @@ export class ProxyPredicateBinary extends ProxyBase {
             case "rhs":
                 return this.rhs;
         }
-        return new RuntimeException("Unknown property for type 'ProxyPredicateBinary': '{property}'", {property});
+        return this.unknown(property);
     }
-    setProperty(property: string, value: Value): Value | Exception {
-        return new RuntimeException("Property modification is not supported by type 'ProxyPredicateBinary'", {property, value});
-    }
-    mutProperty(property: string, op: string, lazy_: () => Value): Value | Exception {
-        return new RuntimeException("Property mutation is not supported by type 'ProxyPredicateBinary'", {property, op});
-    }
-    getIndex(index: Value): Value | Exception {
-        return new RuntimeException("Indexing is not supported by type 'ProxyPredicateBinary'", {index});
-    }
-    setIndex(index: Value, value: Value): Value | Exception {
-        return new RuntimeException("Index modification is not supported for type 'ProxyPredicateBinary': '{property}'", {index, value});
-    }
-    mutIndex(index: Value, op: string, lazy_: () => Value): Value | Exception {
-        return new RuntimeException("Index mutation is not supported for type 'ProxyPredicateBinary': '{property}'", {index, op});
+    toDebug(): string {
+        return `<ProxyPredicateBinary ${this.value} ${this.lhs} ${this.op} ${this.rhs} ${this.location}]`;
     }
     toString(): string {
         return `<ProxyPredicateBinary ${this.value} ${this.lhs} ${this.op} ${this.rhs} ${this.location}]`;
+    }
+    describe(): string {
+        return "a binary predicate value";
     }
 }

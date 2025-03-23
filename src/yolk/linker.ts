@@ -9,6 +9,7 @@ import { Program } from "./program";
 import { ProxyPredicateBinary } from "./proxy";
 import { Type } from "./type";
 import { Value } from "./value";
+import { ValueMap } from "./valuemap";
 
 class Resolver extends Logger {
     constructor(public logger: Logger) {
@@ -349,6 +350,11 @@ class Node_ValuePropertyGet extends Node {
             return Builtins.String.queryMethod(instance.getUnicode(), this.property)
                 ?? this.raise("Unknown builtin property for 'string': '{method}()'", {method:this.property});
         }
+        if (instance.kind === Value.Kind.Proxy) {
+            const proxy = instance.getProxy();
+            const property = proxy.getProperty(this.property).unwrap(this.location);
+            return (runner, args) => property.invoke(runner, args).unwrap(this.location);
+        }
         this.unimplemented(runner);
     }
     modify(runner: Program.Runner, op_: string, expr_: Node): Value {
@@ -397,7 +403,7 @@ abstract class Node_TypeLiteral extends Node {
         super(location);
     }
     evaluate(runner: Program.Runner): Value {
-        this.unimplemented(runner);
+        return Value.fromProxy(runner.manifestations.OBJECT);
     }
     execute(runner: Program.Runner): void {
         this.unimplemented(runner);
@@ -650,7 +656,7 @@ class Node_ValueObject extends Node {
         return Type.OBJECT;
     }
     evaluate(runner: Program.Runner): Value {
-        const elements = new Map<Value, Value>();
+        const elements = new ValueMap();
         for (const node of this.nodes) {
             const kv = node.keyvalue(runner);
             assert(!kv.key.isVoid());

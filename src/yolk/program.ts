@@ -2,6 +2,7 @@ import { assert } from "./assertion";
 import { RuntimeException } from "./exception";
 import { Location } from "./location";
 import { Logger } from "./logger";
+import { Manifestations } from "./manifestations";
 import { Message } from "./message";
 import { SymbolTable } from "./symboltable";
 import { Type } from "./type";
@@ -58,6 +59,13 @@ export namespace Program {
         expectString(index: number) {
             return this.expectUnicode(index).toString();
         }
+        expectProxy(index: number) {
+            const value = this.arguments[index];
+            if (value.kind !== Value.Kind.Proxy) {
+                this.fail("Expected argument {index} to be an 'object', but got {value}" + value.describe(), {index, value});
+            }
+            return value.getProxy();
+        }
         fail(message: string, parameters?: Message.Parameters): never {
             if (this.funcname) {
                 throw new RuntimeException(message + " in function call to '{function}()'", { ...parameters, function: this.funcname });
@@ -67,6 +75,7 @@ export namespace Program {
     }
     export abstract class Runner extends Logger {
         abstract location: Location;
+        abstract manifestations: Manifestations;
         abstract variableDeclare(symbol: string, type: Type): void;
         abstract variableDefine(symbol: string, type: Type, initializer: Value): void;
         abstract variableGet(symbol: string): Value;
@@ -90,9 +99,11 @@ class Runner extends Program.Runner {
         super();
         this.variables = new SymbolTable();
         this.location = new Location("", 0, 0);
+        this.manifestations = Manifestations.createDefault();
     }
-    variables: SymbolTable;
     location: Location;
+    manifestations: Manifestations;
+    variables: SymbolTable;
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
     }
