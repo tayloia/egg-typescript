@@ -1,10 +1,11 @@
 import { assert } from "./assertion";
 import { RuntimeException } from "./exception";
+import { FunctionArguments } from "./function";
 import { Location } from "./location";
 import { Logger } from "./logger";
 import { Manifestations } from "./manifestations";
 import { Message } from "./message";
-import { SymbolTable } from "./symboltable";
+import { SymbolFlavour, SymbolTable } from "./symboltable";
 import { Type } from "./type";
 import { Value } from "./value";
 
@@ -17,70 +18,14 @@ export class Program {
 }
 
 export namespace Program {
-    export type Callsite = (runner: Runner, args: Arguments) => Value;
-    export class Arguments {
-        funcname: string = "";
-        arguments: Value[] = [];
-        add(argument: Value) {
-            this.arguments.push(argument);
-        }
-        evaluate(callee: Value) {
-            return callee;
-        }
-        expect(lbound: number, ubound: number = lbound): number {
-            const expected = () => ["no arguments", "one argument"][lbound] ?? "{expected} arguments";
-            assert.le(lbound, ubound);
-            if (lbound === ubound) {
-                // Exact number of arguments expected
-                if (this.arguments.length !== lbound) {
-                    this.fail(`Expected ${expected()}, but got {actual}`, {expected: lbound, actual: this.arguments.length});
-                }
-            } else if (this.arguments.length < lbound) {
-                this.fail(`Expected at least ${expected()}, but got {actual}`, {actual: this.arguments.length});
-            } else if (this.arguments.length > ubound) {
-                this.fail(`Expected no more than ${expected()}, but got {actual}`, {actual: this.arguments.length});
-            }
-            return this.arguments.length;
-        }
-        expectInt(index: number) {
-            const value = this.arguments[index];
-            if (value.kind !== Value.Kind.Int) {
-                this.fail("Expected argument {index} to be an 'int', but got {value}" + value.describe(), {index, value});
-            }
-            return value.getInt();
-        }
-        expectUnicode(index: number) {
-            const value = this.arguments[index];
-            if (value.kind !== Value.Kind.String) {
-                this.fail("Expected argument {index} to be a 'string', but got {value}" + value.describe(), {index, value});
-            }
-            return value.getUnicode();
-        }
-        expectString(index: number) {
-            return this.expectUnicode(index).toString();
-        }
-        expectProxy(index: number) {
-            const value = this.arguments[index];
-            if (value.kind !== Value.Kind.Proxy) {
-                this.fail("Expected argument {index} to be an 'object', but got {value}" + value.describe(), {index, value});
-            }
-            return value.getProxy();
-        }
-        fail(message: string, parameters?: Message.Parameters): never {
-            if (this.funcname) {
-                throw new RuntimeException(message + " in function call to '{function}()'", { ...parameters, function: this.funcname });
-            }
-            throw new RuntimeException(message + " in function call", parameters);
-        }
-    }
+    export type Callsite = (runner: Runner, args: FunctionArguments) => Value;
     export abstract class Runner extends Logger {
         abstract location: Location;
         abstract manifestations: Manifestations;
-        abstract variableDeclare(symbol: string, type: Type): void;
-        abstract variableDefine(symbol: string, type: Type, initializer: Value): void;
-        abstract variableGet(symbol: string): Value;
-        abstract variableSet(symbol: string, value: Value): void;
-        abstract variableMut(symbol: string, op: string, lazy: () => Value): Value;
+        abstract symbolAdd(symbol: string, flavour: SymbolFlavour, type: Type, value: Value): void;
+        abstract symbolGet(symbol: string): Value;
+        abstract symbolSet(symbol: string, value: Value): void;
+        abstract symbolMut(symbol: string, op: string, lazy: () => Value): Value;
         raise(message: string, parameters?: Message.Parameters): never {
             throw new RuntimeException(message, { ...parameters, location: this.location });
         }
@@ -97,13 +42,13 @@ export namespace Program {
 class Runner extends Program.Runner {
     constructor(public program: Program, public logger: Logger) {
         super();
-        this.variables = new SymbolTable();
+        this.symbols = new SymbolTable();
         this.location = new Location("", 0, 0);
         this.manifestations = Manifestations.createDefault();
     }
     location: Location;
     manifestations: Manifestations;
-    variables: SymbolTable;
+    symbols: SymbolTable;
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
     }
@@ -111,34 +56,35 @@ class Runner extends Program.Runner {
         assert.eq(this.program.modules.length, 1);
         this.program.modules[0].root.execute(this);
     }
-    variableDeclare(symbol: string, type: Type): void {
-        this.variables.declare(symbol, type);
-    }
-    variableDefine(symbol: string, type: Type, initializer: Value): void {
-        const compatible = type.compatible(initializer);
-        if (compatible === undefined) {
-            this.raise("Cannot initialize '{symbol}' of type '{dsttype}' with {srctype}", {
-                symbol,
-                dsttype: type.describe(),
-                srctype:initializer.describe()
-            });
+    symbolAdd(symbol: string, flavour: SymbolFlavour, type: Type, value: Value): void {
+        if (value.isVoid()) {
+            this.symbols.add(symbol, flavour, type, value);
+        } else {
+            const compatible = type.compatible(value);
+            if (compatible.isVoid()) {
+                this.raise("Cannot initialize '{symbol}' of type '{dsttype}' with {srctype}", {
+                    symbol,
+                    dsttype: type.describe(),
+                    srctype:value.describe()
+                });
+            }
+            this.symbols.add(symbol, flavour, type, compatible);
         }
-        this.variables.define(symbol, type, compatible);
     }
-    variableGet(symbol: string): Value {
-        const entry = this.variables.find(symbol);
+    symbolGet(symbol: string): Value {
+        const entry = this.symbols.find(symbol);
         if (!entry) {
             this.raise("Variable not found in symbol table (get): '{symbol}'", {symbol});
         }
         return entry.value;
     }
-    variableSet(symbol: string, value: Value): void {
-        const entry = this.variables.find(symbol);
+    symbolSet(symbol: string, value: Value): void {
+        const entry = this.symbols.find(symbol);
         if (entry === undefined) {
             this.raise("Variable not found in symbol table (set): '{symbol}'", {symbol});
         }
         const compatible = entry.type.compatible(value);
-        if (compatible === undefined) {
+        if (compatible.isVoid()) {
             this.raise("Cannot assign value of type '{type}' to variable '{symbol}'", {
                 symbol,
                 type: entry.type.describe()
@@ -146,8 +92,8 @@ class Runner extends Program.Runner {
         }
         entry.value = compatible;
     }
-    variableMut(symbol: string, op: string, lazy: () => Value): Value {
-        const entry = this.variables.find(symbol);
+    symbolMut(symbol: string, op: string, lazy: () => Value): Value {
+        const entry = this.symbols.find(symbol);
         if (entry === undefined) {
             this.raise("Variable not found in symbol table (mut): '{symbol}'", {symbol});
         }

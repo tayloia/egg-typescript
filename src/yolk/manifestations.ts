@@ -1,5 +1,6 @@
 import { assert } from "./assertion";
 import { Exception, RuntimeException } from "./exception";
+import { FunctionArguments } from "./function";
 import { Program } from "./program";
 import { ToStringOptions, Value } from "./value";
 
@@ -44,7 +45,7 @@ class ManifestationBase implements Value.Proxy {
     delIndex(index_: Value): Value | Exception {
         this.unimplemented();
     }
-    invoke(runner_: Program.Runner, args_: Program.Arguments): Value | Exception {
+    invoke(runner_: Program.Runner, args_: FunctionArguments): Value | Exception {
         this.unimplemented();
     }
     toUnderlying(): unknown {
@@ -105,7 +106,7 @@ class ManifestationObjectPropertyDel extends ManifestationBase {
     constructor() {
         super("object.property.del");
     }
-    invoke(runner_: Program.Runner, args: Program.Arguments): Value | Exception {
+    invoke(runner_: Program.Runner, args: FunctionArguments): Value | Exception {
         args.expect(2);
         const proxy = args.expectProxy(0);
         const property = args.expectString(1);

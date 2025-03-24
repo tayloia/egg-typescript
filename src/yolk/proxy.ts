@@ -7,6 +7,7 @@ import { ToStringOptions, Value } from "./value";
 import { Program } from "./program";
 import { Message } from "./message";
 import { ValueMap } from "./valuemap";
+import { FunctionArguments, FunctionDefinition } from "./function";
 
 abstract class ProxyBase implements Value.Proxy {
     getProperty(property: string): Value | Exception {
@@ -33,7 +34,7 @@ abstract class ProxyBase implements Value.Proxy {
     delIndex(index: Value): Value | Exception {
         return this.unsupported("Deletion by index is", {index});
     }
-    invoke(runner_: Program.Runner, args_: Program.Arguments): Value | Exception {
+    invoke(runner_: Program.Runner, args_: FunctionArguments): Value | Exception {
         return this.unsupported("Function invocation '()' is");
     }
     [inspect.custom]() {
@@ -108,7 +109,7 @@ export class ProxyVanillaArray extends ProxyBase {
 }
 
 export class ProxyVanillaObject extends ProxyBase {
-    constructor(private entries: ValueMap) {
+    constructor(protected entries: ValueMap) {
         super();
     }
     getProperty(property: string): Value | Exception {
@@ -128,7 +129,6 @@ export class ProxyVanillaObject extends ProxyBase {
             return value;
         }
         return Value.VOID;
-
     }
     toUnderlying(): unknown {
         return this.entries;
@@ -141,6 +141,21 @@ export class ProxyVanillaObject extends ProxyBase {
     }
     describe(): string {
         return "a value of type 'object'";
+    }
+}
+
+export class ProxyVanillaFunction extends ProxyVanillaObject {
+    constructor(private definition: FunctionDefinition, entries: ValueMap) {
+        super(entries);
+    }
+    toUnderlying(): unknown {
+        return this.definition;
+    }
+    toString(): string {
+        return this.definition.toString();
+    }
+    describe(): string {
+        return this.definition.describe();
     }
 }
 

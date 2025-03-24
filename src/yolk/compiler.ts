@@ -27,18 +27,35 @@ class Impl extends Logger {
     compileStmt(pnode: Parser.Node): Node {
         switch (pnode.kind) {
             case Parser.Kind.Variable:
-                switch (pnode.children.length) {
-                    case 1:
-                        return new Node(pnode.location, Compiler.Kind.StmtVariableDeclare, [this.compileType(pnode.children[0])], pnode.value)
-                    case 2:
-                        return new Node(pnode.location, Compiler.Kind.StmtVariableDefine, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
+                if (pnode.children.length === 1) {
+                    return new Node(pnode.location, Compiler.Kind.StmtVariableDeclare, [this.compileType(pnode.children[0])], pnode.value)
                 }
-                assert.fail("Invalid number of children for Parser.Kind.Variable: {length}", {length:pnode.children.length});
-                // eslint-disable-next-line no-fallthrough
+                assert.eq(pnode.children.length, 2);
+                return new Node(pnode.location, Compiler.Kind.StmtVariableDefine, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
+            case Parser.Kind.Function:
+                assert.eq(pnode.children.length, 3);
+                return new Node(pnode.location, Compiler.Kind.StmtFunctionDefine, [this.compileType(pnode.children[0]), this.compileStmtFunctionParameters(pnode.children[1]), this.compileStmt(pnode.children[2])], pnode.value)
             case Parser.Kind.FunctionCall:
+                assert.eq(pnode.children.length, 2);
                 return this.compileStmtFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.StatementBlock:
                 return new Node(pnode.location, Compiler.Kind.StmtBlock, pnode.children.map(child => this.compileStmt(child)));
+            case Parser.Kind.StatementIf:
+                assert.eq(pnode.children.length, 2);
+                return new Node(pnode.location, Compiler.Kind.StmtIf, [this.compileExpr(pnode.children[0]), this.compileStmt(pnode.children[1])]);
+            case Parser.Kind.StatementReturn:
+                assert.eq(pnode.children.length, 1);
+                return new Node(pnode.location, Compiler.Kind.StmtReturn, [this.compileExpr(pnode.children[0])]);
+            case Parser.Kind.StatementTry:
+                if (pnode.value.asBoolean()) {
+                    assert.ge(pnode.children.length, 2);
+                    return this.compileStmtTry(pnode.location, pnode.children[0], pnode.children.slice(1, -1), pnode.children[pnode.children.length - 1]);
+                }
+                assert.ge(pnode.children.length, 1);
+                return this.compileStmtTry(pnode.location, pnode.children[0], pnode.children.slice(1), undefined);
+            case Parser.Kind.StatementCatch:
+                assert.eq(pnode.children.length, 2);
+                return new Node(pnode.location, Compiler.Kind.StmtCatch, [this.compileType(pnode.children[0]), this.compileStmt(pnode.children[1])], pnode.value);
             case Parser.Kind.StatementAssign:
                 assert.eq(pnode.children.length, 2);
                 return new Node(pnode.location, Compiler.Kind.StmtAssign, [this.compileTarget(pnode.children[0]), this.compileExpr(pnode.children[1])]);
@@ -66,11 +83,31 @@ class Impl extends Logger {
         }
         assert.fail("Unknown node kind in compileStmt: {kind}", {kind:pnode.kind});
     }
+    compileStmtFunctionParameters(parameters: Parser.Node): Node {
+        assert.eq(parameters.kind, Parser.Kind.FunctionParameters);
+        return new Node(parameters.location, Compiler.Kind.FunctionParameters, parameters.children.map(child => this.compileStmtFunctionParameter(child)), parameters.value);
+    }
+    compileStmtFunctionParameter(parameter: Parser.Node): Node {
+        assert.eq(parameter.kind, Parser.Kind.FunctionParameter);
+        assert.eq(parameter.children.length, 1);
+        return new Node(parameter.location, Compiler.Kind.FunctionParameter, [this.compileType(parameter.children[0])], parameter.value);
+    }
     compileStmtFunctionCall(callee: Parser.Node, args: Parser.Node): Node {
         const predicate = callee.kind === Parser.Kind.Identifier && callee.value.asString() === "assert";
         const children = [this.compileExpr(callee), ...this.compileExprArguments(args, predicate)];
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Compiler.Kind.StmtCall, children);
+    }
+    compileStmtTry(location: Location, tryBlock: Parser.Node, catchClauses: Parser.Node[], finallyClause: Parser.Node | undefined): Node {
+        const children = [this.compileStmt(tryBlock)];
+        for (const catchClause of catchClauses) {
+            children.push(this.compileStmt(catchClause));
+        }
+        if (finallyClause) {
+            children.push(this.compileStmt(finallyClause));
+            return new Node(location, Compiler.Kind.StmtTry, children, Value.TRUE);
+        }
+        return new Node(location, Compiler.Kind.StmtTry, children, Value.FALSE);
     }
     compileType(pnode: Parser.Node): Node {
         switch (pnode.kind) {
@@ -194,6 +231,10 @@ export namespace Compiler {
     export enum Kind {
         Module = "module",
         StmtBlock = "stmt-block",
+        StmtIf = "stmt-if",
+        StmtReturn = "stmt-return",
+        StmtTry = "stmt-try",
+        StmtCatch = "stmt-catch",
         StmtCall = "stmt-call",
         StmtAssign = "stmt-assign",
         StmtMutate = "stmt-mutate",
@@ -202,6 +243,9 @@ export namespace Compiler {
         StmtForloop = "stmt-forloop",
         StmtVariableDeclare = "stmt-variable-declare",
         StmtVariableDefine = "stmt-variable-define",
+        StmtFunctionDefine = "stmt-function-define",
+        FunctionParameters = "function-parameters",
+        FunctionParameter = "function-parameter",
         TargetVariable = "target-variable",
         TargetProperty = "target-property",
         TargetIndex = "target-index",

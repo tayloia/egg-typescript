@@ -25,7 +25,7 @@ export class Type {
         set.delete(primitive);
         return new Type(set);
     }
-    compatible(value: Value): Value | undefined {
+    compatible(value: Value): Value {
         // Auto-promote 'int' to 'float'
         switch (value.kind) {
             case Value.Kind.Null:
@@ -63,7 +63,7 @@ export class Type {
                 }
                 break;
         }
-        return undefined;
+        return Value.VOID;
     }
     describe(): string {
         const joined = Array.from(this.primitives.values()).join("|");

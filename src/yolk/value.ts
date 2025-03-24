@@ -2,9 +2,10 @@ import { inspect } from "util";
 
 import { assert } from "./assertion";
 import { Exception, RuntimeException } from "./exception";
-import { ProxyVanillaArray, ProxyVanillaObject } from "./proxy";
+import { ProxyVanillaArray, ProxyVanillaFunction, ProxyVanillaObject } from "./proxy";
 import { Program } from "./program";
 import { ValueMap } from "./valuemap";
+import { FunctionArguments, FunctionDefinition } from "./function";
 
 export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Proxy;
 
@@ -232,7 +233,7 @@ export class Value {
         }
         assert.fail("Unknown mutating operator: '{op}'", {op, caller:this.mutate});
     }
-    invoke(runner: Program.Runner, args: Program.Arguments): Value | Exception {
+    invoke(runner: Program.Runner, args: FunctionArguments): Value | Exception {
         if (this.kind !== Value.Kind.Proxy) {
             return new RuntimeException("Function invocation '()' is not supported by " + this.describe());
         }
@@ -279,6 +280,9 @@ export class Value {
     }
     static fromVanillaObject(elements: ValueMap) {
         return Value.fromProxy(new ProxyVanillaObject(elements));
+    }
+    static fromVanillaFunction(definition: FunctionDefinition, elements?: ValueMap) {
+        return Value.fromProxy(new ProxyVanillaFunction(definition, elements ?? new ValueMap()));
     }
     static binary(lhs: Value, op: string, rhs: Value): Value | Exception  {
         switch (op) {
@@ -563,7 +567,7 @@ export namespace Value {
         setIndex(index: Value, value: Value): Value | Exception;
         mutIndex(index: Value, op: string, lazy: () => Value): Value | Exception;
         delIndex(index: Value): Value | Exception;
-        invoke(runner: Program.Runner, args: Program.Arguments): Value | Exception;
+        invoke(runner: Program.Runner, args: FunctionArguments): Value | Exception;
         toUnderlying(): unknown;
         toDebug(): string;
         toString(options_?: ToStringOptions): string;
