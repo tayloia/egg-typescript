@@ -7,7 +7,6 @@ import { Location } from "./location";
 import { ConsoleLogger, Logger } from "./logger";
 import { Message } from "./message";
 import { Program } from "./program";
-import { ProxyPredicateBinary } from "./proxy";
 import { SymbolFlavour } from "./symboltable";
 import { Type } from "./type";
 import { Value } from "./value";
@@ -41,14 +40,8 @@ abstract class Node {
     abstract evaluate(runner: Program.Runner): Value;
     abstract execute(runner: Program.Runner): Outcome;
     abstract modify(runner: Program.Runner, op: string, expr: Node): Value;
-    callsite(runner: Program.Runner): Program.Callsite {
-        this.unimplemented(runner);
-    }
     keyvalue(runner: Program.Runner): KeyValue {
         return new KeyValue(Value.VOID, this.evaluate(runner));
-    }
-    predicate(runner: Program.Runner): Value {
-        return this.evaluate(runner);
     }
     raise(message: string, parameters?: Message.Parameters): never {
         throw new RuntimeException(message, { ...parameters, location: this.location });
@@ -103,6 +96,50 @@ class Node_StmtBlock extends Node {
     }
 }
 
+class Node_StmtAssert extends Node {
+    constructor(location: Location, public op: string, public children: Node[]) {
+        super(location);
+    }
+    resolve(resolver: Resolver): Type {
+        this.unimplemented(resolver);
+    }
+    evaluate(runner: Program.Runner): Value {
+        this.unimplemented(runner);
+    }
+    execute(runner: Program.Runner): Outcome {
+        let lhs, rhs, passed;
+        switch (this.children.length) {
+            case 1:
+                if (this.op === "") {
+                    passed = this.children[0].evaluate(runner).asBoolean();
+                    if (!passed) {
+                        throw new RuntimeException("Assertion is untrue", {location: this.location});
+                    }
+                } else {
+                    rhs = this.children[0].evaluate(runner);
+                    passed = Value.binary(rhs, this.op, rhs).unwrap().asBoolean();
+                    if (!passed) {
+                        throw new RuntimeException("Assertion is untrue: {op}{rhs}", {location: this.location, op: this.op, rhs});
+                    }
+                }
+                break;
+            case 2:
+                lhs = this.children[0].evaluate(runner);
+                rhs = this.children[1].evaluate(runner);
+                passed = Value.binary(lhs, this.op, rhs).unwrap().asBoolean();
+                if (!passed) {
+                    throw new RuntimeException("Assertion is untrue: {lhs} {op} {rhs}", {location: this.location, lhs, op: this.op, rhs});
+                }
+                break;
+            default:
+                assert.fail("Invalid number of assertion nodes: {nodes}", {nodes:this.children.length});
+        }
+    }
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
+    }
+}
+
 class Node_StmtCall extends Node {
     constructor(location: Location, public children: Node[]) {
         super(location);
@@ -114,13 +151,13 @@ class Node_StmtCall extends Node {
         this.unimplemented(runner);
     }
     execute(runner: Program.Runner): Outcome {
-        const callsite = this.children[0].callsite(runner);
+        const callee = this.children[0].evaluate(runner);
         const args = new FunctionArguments();
         for (let index = 1; index < this.children.length; ++index) {
             args.add(this.children[index].evaluate(runner));
         }
         runner.location = this.location;
-        callsite(runner, args);
+        callee.invoke(runner, args).unwrap();
     }
     modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
@@ -158,16 +195,12 @@ class Node_StmtFunctionDefine extends Node {
         this.unimplemented(runner);
     }
     execute(runner: Program.Runner): Outcome {
-        const definition = new FunctionDefinition(this.signature, this.callsite(runner));
-        const functype = definition.createType();
-        runner.location = this.location;
-        runner.symbolAdd(this.signature.name, SymbolFlavour.Function, functype, Value.fromVanillaFunction(definition));
-    }
-    callsite(runner_: Program.Runner): Program.Callsite {
-        return (runner, args_) => {
-            this.block.execute(runner);
+        const definition = new FunctionDefinition(this.signature, (runner, args_) => {
+            const outcome = this.block.execute(runner);
             return Value.VOID;
-        };
+        });
+        runner.location = this.location;
+        runner.symbolAdd(this.signature.name, SymbolFlavour.Function, definition.type, Value.fromVanillaFunction(definition));
     }
     modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
@@ -376,31 +409,6 @@ class Node_ValueVariableGet extends Node {
     execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    callsite(runner: Program.Runner): Program.Callsite {
-        if (this.identifier === "assert") {
-            return (runner_, args) => {
-                const proxy = args.arguments[0].getProxy().toUnderlying() as {
-                    value: Value;
-                    lhs: Value;
-                    op: string;
-                    rhs: Value;
-                    location: Location;
-                };
-                if (!proxy.value.asBoolean()) {
-                    throw new RuntimeException("Assertion is untrue: {lhs} {op} {rhs}", proxy);
-                }
-                return Value.VOID;
-            };
-        }
-        if (this.identifier === "print") {
-            return (runner, args) => {
-                const text = args.arguments.map(arg => arg.toString()).join("");
-                runner.print(text);
-                return Value.VOID;
-            };
-        }
-        this.unimplemented(runner);
-    }
     modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
@@ -416,29 +424,23 @@ class Node_ValuePropertyGet extends Node {
     evaluate(runner: Program.Runner): Value {
         const value = this.instance.evaluate(runner);
         runner.location = this.location;
-        if (value.kind === Value.Kind.String && this.property === "length") {
-            return Value.fromInt(value.getUnicode().length);
+        if (value.kind === Value.Kind.String) {
+            const unicode = value.getUnicode();
+            if (this.property === "length") {
+                return Value.fromInt(unicode.length);
+            }
+            const proxy = Builtins.String.queryProxy(unicode, this.property);
+            if (proxy) {
+                return Value.fromProxy(proxy);
+            }
+            this.raise("Unknown property for 'string': '{property}'", {property: this.property});
         }
         if (value.kind === Value.Kind.Proxy) {
             return value.getProxy().getProperty(this.property).unwrap(this.location);
         }
-        this.unimplemented(runner);
+        assert.fail(`Cannot get property for ${value.kind}`);
     }
     execute(runner: Program.Runner): Outcome {
-        this.unimplemented(runner);
-    }
-    callsite(runner: Program.Runner): Program.Callsite {
-        const instance = this.instance.evaluate(runner);
-        runner.location = this.location;
-        if (instance.kind === Value.Kind.String) {
-            return Builtins.String.queryMethod(instance.getUnicode(), this.property)
-                ?? this.raise("Unknown builtin property for 'string': '{method}()'", {method:this.property});
-        }
-        if (instance.kind === Value.Kind.Proxy) {
-            const proxy = instance.getProxy();
-            const property = proxy.getProperty(this.property).unwrap(this.location);
-            return (runner, args) => property.invoke(runner, args).unwrap(this.location);
-        }
         this.unimplemented(runner);
     }
     modify(runner: Program.Runner, op_: string, expr_: Node): Value {
@@ -484,7 +486,7 @@ abstract class Node_TypeLiteral extends Node {
         super(location);
     }
     evaluate(runner: Program.Runner): Value {
-        return Value.fromProxy(runner.manifestations.OBJECT);
+        this.unimplemented(runner);
     }
     execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
@@ -534,17 +536,20 @@ class Node_TypeLiteral_String extends Node_TypeLiteral {
     constructor(location: Location) {
         super(location);
     }
+    evaluate(runner: Program.Runner): Value {
+        return Value.fromProxy(runner.manifestations.STRING);
+    }
     resolve(resolver_: Resolver): Type {
         return Type.STRING;
-    }
-    callsite(runner_: Program.Runner): Program.Callsite {
-        return Builtins.String.concat;
     }
 }
 
 class Node_TypeLiteral_Object extends Node_TypeLiteral {
     constructor(location: Location) {
         super(location);
+    }
+    evaluate(runner: Program.Runner): Value {
+        return Value.fromProxy(runner.manifestations.OBJECT);
     }
     resolve(resolver_: Resolver): Type {
         return Type.OBJECT;
@@ -730,13 +735,13 @@ class Node_ValueCall extends Node {
     }
     evaluate(runner: Program.Runner): Value {
         runner.location = this.children[0].location;
-        const callsite = this.children[0].callsite(runner);
+        const callee = this.children[0].evaluate(runner);
         const args = new FunctionArguments();
         for (let arg = 1; arg < this.children.length; ++arg) {
             args.add(this.children[arg].evaluate(runner));
         }
         runner.location = this.location;
-        return callsite(runner, args);
+        return callee.invoke(runner, args).unwrap();
     }
     execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
@@ -758,31 +763,6 @@ class Node_ValueOperatorBinary extends Node {
         const rhs = this.rhs.evaluate(runner);
         runner.location = this.location;
         return Value.binary(lhs, this.op, rhs).unwrap(this.location);
-    }
-    execute(runner: Program.Runner): Outcome {
-        this.unimplemented(runner);
-    }
-    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
-        this.unimplemented(runner);
-    }
-    predicate(runner: Program.Runner): Value {
-        const lhs = this.lhs.evaluate(runner);
-        const rhs = this.rhs.evaluate(runner);
-        runner.location = this.location;
-        const value = Value.binary(lhs, this.op, rhs).unwrap(this.location);
-        return Value.fromProxy(new ProxyPredicateBinary(value, lhs, this.op, rhs, this.location));
-    }
-}
-
-class Node_ValuePredicate extends Node {
-    constructor(location: Location, public child: Node) {
-        super(location);
-    }
-    resolve(resolver: Resolver): Type {
-        this.unimplemented(resolver);
-    }
-    evaluate(runner: Program.Runner): Value {
-        return this.child.predicate(runner);
     }
     execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
@@ -815,6 +795,9 @@ class Impl extends Logger {
                 return new Node_Module(node.location, this.linkNodes(node.children));
             case Compiler.Kind.StmtBlock:
                 return new Node_StmtBlock(node.location, this.linkNodes(node.children));
+            case Compiler.Kind.StmtAssert:
+                assert.ge(node.children.length, 1);
+                return new Node_StmtAssert(node.location, node.value.asString(), this.linkNodes(node.children));
             case Compiler.Kind.StmtCall:
                 assert.ge(node.children.length, 1);
                 return new Node_StmtCall(node.location, this.linkNodes(node.children));
@@ -879,10 +862,7 @@ class Impl extends Logger {
             case Compiler.Kind.ValueOperatorBinary:
                 assert.eq(node.children.length, 2);
                 return new Node_ValueOperatorBinary(node.location, this.linkNode(node.children[0]), node.value.asString(), this.linkNode(node.children[1]));
-            case Compiler.Kind.ValuePredicate:
-                assert.eq(node.children.length, 1);
-                return new Node_ValuePredicate(node.location, this.linkNode(node.children[0]));
-            }
+        }
         assert.fail("Unknown node kind in linkNode: {kind}", {kind:node.kind});
     }
     linkNodes(nodes: Compiler.Node[]): Node[] {

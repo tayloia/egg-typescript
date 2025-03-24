@@ -284,6 +284,9 @@ export class Value {
     static fromVanillaFunction(definition: FunctionDefinition, elements?: ValueMap) {
         return Value.fromProxy(new ProxyVanillaFunction(definition, elements ?? new ValueMap()));
     }
+    static unary(op: string, rhs_: Value): Value | Exception  {
+        assert.fail("Unknown unary operator: '{op}'", {op, caller:Value.unary});
+    }
     static binary(lhs: Value, op: string, rhs: Value): Value | Exception  {
         switch (op) {
             case "+":

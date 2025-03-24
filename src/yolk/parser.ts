@@ -780,9 +780,7 @@ export class Parser {
     }
     parse(): Parser.Node {
         const impl = new Impl(this.input, this.logger);
-        const root = impl.expectModule();
-        //root.dump(); // WIBBLE
-        return root;
+        return impl.expectModule();
     }
     withLogger(logger: Logger): Parser {
         this._logger = logger;

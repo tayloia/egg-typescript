@@ -2,7 +2,6 @@ import { inspect } from "util";
 
 import { assert } from "./assertion";
 import { Exception, RuntimeException } from "./exception";
-import { Location } from "./location";
 import { ToStringOptions, Value } from "./value";
 import { Program } from "./program";
 import { Message } from "./message";
@@ -53,6 +52,18 @@ abstract class ProxyBase implements Value.Proxy {
     }
     protected unsupported(message: string, parameters?: Message.Parameters): Exception {
         return new RuntimeException(`${message} not supported by ${this.describe()}`, parameters);
+    }
+}
+
+export class ProxyStringMethod extends ProxyBase {
+    constructor(private method: string, public invoke: Program.Callsite) {
+        super();
+    }
+    toString(): string {
+        return "[" + this.method + "]";
+    }
+    describe(): string {
+        return "[" + this.method + "]";
     }
 }
 
@@ -148,6 +159,9 @@ export class ProxyVanillaFunction extends ProxyVanillaObject {
     constructor(private definition: FunctionDefinition, entries: ValueMap) {
         super(entries);
     }
+    invoke(runner: Program.Runner, args: FunctionArguments): Value {
+        return this.definition.invoke(runner, args);
+    }
     toUnderlying(): unknown {
         return this.definition;
     }
@@ -156,33 +170,5 @@ export class ProxyVanillaFunction extends ProxyVanillaObject {
     }
     describe(): string {
         return this.definition.describe();
-    }
-}
-
-export class ProxyPredicateBinary extends ProxyBase {
-    constructor(private value: Value, private lhs: Value, private op: string, private rhs: Value, private location: Location) {
-        super();
-    }
-    getProperty(property: string): Value | Exception {
-        switch (property) {
-            case "value":
-                return this.value;
-            case "lhs":
-                return this.lhs;
-            case "op":
-                return Value.fromString(this.op);
-            case "rhs":
-                return this.rhs;
-        }
-        return this.unknown(property);
-    }
-    toDebug(): string {
-        return `<ProxyPredicateBinary ${this.value} ${this.lhs} ${this.op} ${this.rhs} ${this.location}]`;
-    }
-    toString(): string {
-        return `<ProxyPredicateBinary ${this.value} ${this.lhs} ${this.op} ${this.rhs} ${this.location}]`;
-    }
-    describe(): string {
-        return "a binary predicate value";
     }
 }

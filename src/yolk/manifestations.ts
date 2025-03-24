@@ -5,6 +5,7 @@ import { Program } from "./program";
 import { ToStringOptions, Value } from "./value";
 
 export abstract class Manifestations {
+    abstract readonly STRING: Value.Proxy;
     abstract readonly OBJECT: Value.Proxy;
     static createDefault(): Manifestations {
         return new ManifestationsImpl();
@@ -12,6 +13,7 @@ export abstract class Manifestations {
 }
 
 class ManifestationsImpl implements Manifestations {
+    STRING: Value.Proxy = new ManifestationString();
     OBJECT: Value.Proxy = new ManifestationObject();
 }
 
@@ -22,7 +24,7 @@ class ManifestationBase implements Value.Proxy {
         if (found) {
             return Value.fromProxy(found);
         }
-        return new RuntimeException("Property not known: '{class}.{property}'", { class: this.name, property });
+        return new RuntimeException("Property not known: '{type}.{property}'", { type: this.name, property });
     }
     setProperty(property_: string, value_: Value): Value | Exception {
         this.unimplemented();
@@ -62,6 +64,17 @@ class ManifestationBase implements Value.Proxy {
     }
     unimplemented(): never {
         assert.fail("Method not implemented: '{caller}'", { class: this.name, caller: this.unimplemented });
+    }
+}
+
+class ManifestationString extends ManifestationBase {
+    constructor() {
+        super("string", new Map([
+        ]));
+    }
+    invoke(runner_: Program.Runner, args: FunctionArguments): Value | Exception {
+        const text = args.arguments.map(arg => arg.toString()).join("");
+        return Value.fromString(text);
     }
 }
 

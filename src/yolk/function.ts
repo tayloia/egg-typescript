@@ -71,10 +71,10 @@ export class FunctionSignature {
 }
 
 export class FunctionDefinition {
-    constructor(public readonly signature: FunctionSignature, public readonly callsite: Program.Callsite) {}
-    createType(): Type {
-        return Type.OBJECT; // TODO
+    constructor(public readonly signature: FunctionSignature, public readonly invoke: Program.Callsite) {
+        this.type = Type.OBJECT;
     }
+    readonly type: Type;
     toString(): string {
         return `${this.signature.name}()`;
     }

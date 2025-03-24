@@ -93,10 +93,27 @@ class Impl extends Logger {
         return new Node(parameter.location, Compiler.Kind.FunctionParameter, [this.compileType(parameter.children[0])], parameter.value);
     }
     compileStmtFunctionCall(callee: Parser.Node, args: Parser.Node): Node {
-        const predicate = callee.kind === Parser.Kind.Identifier && callee.value.asString() === "assert";
-        const children = [this.compileExpr(callee), ...this.compileExprArguments(args, predicate)];
+        if (callee.kind === Parser.Kind.Identifier && callee.value.asString() === "assert") {
+            assert.eq(args.kind, Parser.Kind.FunctionArguments);
+            assert.eq(args.children.length, 1);
+            return this.compileStmtAssert(args.children[0]);
+        }
+        const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Compiler.Kind.StmtCall, children);
+    }
+    compileStmtAssert(assertion: Parser.Node): Node {
+        if (assertion.kind === Parser.Kind.OperatorUnary) {
+            assert.eq(assertion.children.length, 1);
+            const children = [this.compileExpr(assertion.children[0])];
+            return new Node(assertion.location, Compiler.Kind.StmtAssert, children, assertion.value);    
+        }
+        if (assertion.kind === Parser.Kind.OperatorBinary) {
+            assert.eq(assertion.children.length, 2);
+            const children = [this.compileExpr(assertion.children[0]), this.compileExpr(assertion.children[1])];
+            return new Node(assertion.location, Compiler.Kind.StmtAssert, children, assertion.value);    
+        }
+        return new Node(assertion.location, Compiler.Kind.StmtAssert, [this.compileExpr(assertion)]);
     }
     compileStmtTry(location: Location, tryBlock: Parser.Node, catchClauses: Parser.Node[], finallyClause: Parser.Node | undefined): Node {
         const children = [this.compileStmt(tryBlock)];
@@ -171,7 +188,7 @@ class Impl extends Logger {
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
     compileExprFunctionCall(callee: Parser.Node, args: Parser.Node): Node {
-        const children = [this.compileExpr(callee), ...this.compileExprArguments(args, false)];
+        const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Compiler.Kind.ValueCall, children);
     }
@@ -191,16 +208,9 @@ class Impl extends Logger {
         const location = children[0].location.span(children[1].location);
         return new Node(location, Compiler.Kind.ValueOperatorBinary, children, Value.fromString(op));
     }
-    compileExprArguments(pnode: Parser.Node, predicate: boolean): Node[] {
+    compileExprArguments(pnode: Parser.Node): Node[] {
         assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
-        return pnode.children.map(child => this.compileExprArgument(child, predicate));
-    }
-    compileExprArgument(pnode: Parser.Node, predicate: boolean): Node {
-        const expr = this.compileExpr(pnode);
-        if (predicate) {
-            return new Node(expr.location, Compiler.Kind.ValuePredicate, [expr]);
-        }
-        return expr;
+        return pnode.children.map(child => this.compileExpr(child));
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
@@ -231,6 +241,7 @@ export namespace Compiler {
     export enum Kind {
         Module = "module",
         StmtBlock = "stmt-block",
+        StmtAssert = "stmt-assert",
         StmtIf = "stmt-if",
         StmtReturn = "stmt-return",
         StmtTry = "stmt-try",
@@ -259,7 +270,6 @@ export namespace Compiler {
         ValuePropertyGet = "value-property-get",
         ValueIndexGet = "value-index-get",
         ValueOperatorBinary = "value-operator-binary",
-        ValuePredicate = "value-predicate",
     }
     export interface Node {
         kind: Kind;

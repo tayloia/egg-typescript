@@ -1,4 +1,5 @@
 import { assert } from "./assertion";
+import { Builtins } from "./builtins";
 import { RuntimeException } from "./exception";
 import { FunctionArguments } from "./function";
 import { Location } from "./location";
@@ -43,6 +44,8 @@ class Runner extends Program.Runner {
     constructor(public program: Program, public logger: Logger) {
         super();
         this.symbols = new SymbolTable();
+        const print = new Builtins.Print();
+        this.symbols.add("print", SymbolFlavour.Builtin, print.type, print.value);
         this.location = new Location("", 0, 0);
         this.manifestations = Manifestations.createDefault();
     }

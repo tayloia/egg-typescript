@@ -1,11 +1,27 @@
-import { FunctionArguments } from "./function";
+import { FunctionArguments, FunctionDefinition, FunctionSignature } from "./function";
+import { Location } from "./location";
 import { Program } from "./program";
+import { ProxyStringMethod } from "./proxy";
+import { Type } from "./type";
 import { Value } from "./value";
 
+const LOCATION = new Location("(builtin)", 0, 0);
+
 export namespace Builtins {
+    export class Print {
+        readonly signature = new FunctionSignature("print", LOCATION, Type.VOID, []);
+        readonly definition = new FunctionDefinition(this.signature, this.invoke);
+        readonly type = Type.OBJECT;
+        readonly value = Value.fromVanillaFunction(this.definition);
+        private invoke(runner: Program.Runner, args: FunctionArguments): Value {
+            const text = args.arguments.map(arg => arg.toString()).join("");
+            runner.print(text);
+            return Value.VOID;
+        }
+    }
     export namespace String {
         const SPACE = new Value.Unicode(new Uint32Array([32]));
-        type Method = (instance: Value.Unicode, args: FunctionArguments) => Value;
+        export type Method = (instance: Value.Unicode, args: FunctionArguments) => Value;
         const methods = new Map<String, Method>([
             ["compareTo", compareTo],
             ["contains", contains],
@@ -22,13 +38,12 @@ export namespace Builtins {
             ["startsWith", startsWith],
             ["toString", toString],
         ]);
-        export function queryMethod(instance: Value.Unicode, method: string): Program.Callsite | undefined {
+        export function queryProxy(instance: Value.Unicode, method: string): Value.Proxy | undefined {
             const handler = methods.get(method);
             if (handler) {
-                return (runner_, args) => {
-                    args.funcname = "string." + method;
+                return new ProxyStringMethod(method, (runner_, args) => {
                     return handler(instance, args);
-                };
+                });
             }
             return undefined;
         }
