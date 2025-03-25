@@ -7,6 +7,7 @@ import { Program } from "./program";
 import { Message } from "./message";
 import { ValueMap } from "./valuemap";
 import { FunctionArguments, FunctionDefinition } from "./function";
+import { Location } from "./location";
 
 abstract class ProxyBase implements Value.IProxy {
     getProperty(property: string): Value {
@@ -58,47 +59,6 @@ abstract class ProxyBase implements Value.IProxy {
     }
 }
 
-class ProxyKeyValue extends ProxyBase {
-    constructor(private key: Value, private value: Value) {
-        super();
-    }
-    getProperty(property: string): Value {
-        if (property === "key") {
-            return this.key;
-        }
-        if (property === "value") {
-            return this.value;
-        }
-        throw new RuntimeException("Unknown property for key-value pair: '{property}'", {property});
-    }
-    getIterator(): () => Value {
-        let index = 0;
-        return () => {
-            switch (index) {
-                case 0:
-                    ++index;
-                    return Value.fromProxy(new ProxyKeyValue(Value.fromString("key"), this.key));
-                case 1:
-                    ++index;
-                    return Value.fromProxy(new ProxyKeyValue(Value.fromString("value"), this.value));
-            }
-            return Value.VOID;
-        };
-    }
-    toUnderlying(): unknown {
-        return this;
-    }
-    toString(): string {
-        const options: ToStringOptions = {
-            quoteString: "\"",
-        }
-        return `{key:${this.key.toString(options)},value:${this.value.toString(options)}}`;
-    }
-    describe(): string {
-        return "a key-value pair";
-    }
-}
-
 export class ProxyStringMethod extends ProxyBase {
     constructor(private method: string, public invoke: Program.Callsite) {
         super();
@@ -111,9 +71,57 @@ export class ProxyStringMethod extends ProxyBase {
     }
 }
 
-export class ProxyRuntimeException extends ProxyBase {
-    constructor(private exception: RuntimeException) {
+abstract class ProxyImmutableObject extends ProxyBase {
+    constructor(protected fields: [string, Value][]) {
         super();
+    }
+    protected map = new Map(this.fields);
+    getProperty(property: string): Value {
+        const value = this.map.get(property);
+        if (value === undefined) {
+            throw new RuntimeException(`Unknown property for ${this.describe()}: '{property}'`, {property});
+        }
+        return value;
+    }
+    getIterator(): () => Value {
+        let index = 0;
+        return () => {
+            if (index < this.fields.length) {
+                return ProxyImmutableObject.makePair(...this.fields[index++]);
+            }
+            return Value.VOID;
+        };
+    }
+    toUnderlying(): unknown {
+        return this;
+    }
+    toString(): string {
+        const options: ToStringOptions = {
+            quoteString: "\"",
+        }
+        return "{" + this.fields.map(([key, value]) => key.toString() + ":" + value.toString(options)).join(",") + "}";
+    }
+    describe(): string {
+        return "a key-value pair";
+    }
+    private static makePair(key: string, value: Value) {
+        return Value.fromProxy(new ProxyKeyValue(Value.fromString(key), value));
+    }
+}
+
+class ProxyKeyValue extends ProxyImmutableObject {
+    constructor(key: Value, value: Value) {
+        super([["key", key], ["value", value]]);
+    }
+    describe(): string {
+        return "a key-value pair";
+    }
+}
+
+export class ProxyRuntimeException extends ProxyImmutableObject {
+    constructor(private exception: RuntimeException) {
+        super(ProxyRuntimeException.makeFields(exception));
+        console.log(exception.parameters)
     }
     toUnderlying(): unknown {
         return this.exception;
@@ -123,6 +131,31 @@ export class ProxyRuntimeException extends ProxyBase {
     }
     describe(): string {
         return "an exception";
+    }
+    static makeFields(exception: RuntimeException) {
+        const fields: [string, Value][] = [
+            ["message", Value.fromString(exception.format(false))],
+        ];
+        for (const [key, value] of Object.entries(exception.parameters)) {
+            if (key === "location") {
+                const location = value as Location;
+                if (location.source) {
+                    fields.push(["resource", Value.fromString(location.source)]);
+                }
+                if (location.line0 > 0) {
+                    fields.push(["line", Value.fromInt(BigInt(location.line0))]);
+                }
+                if (location.column0 > 0) {
+                    fields.push(["column", Value.fromInt(BigInt(location.column0))]);
+                }
+            } else if (key !== "name" && key !== "origin") {
+                const extracted = Value.fromUnknown(value);
+                if (!extracted.isVoid()) {
+                    fields.push([key, extracted]);
+                }
+            }
+        }
+        return fields;
     }
 }
 

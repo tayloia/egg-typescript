@@ -118,7 +118,7 @@ class Node_StmtAssert extends Node {
         this.unimplemented(runner);
     }
     execute(runner: Program.IRunner): Outcome {
-        let lhs, rhs, passed;
+        let left, right, passed;
         switch (this.children.length) {
             case 1:
                 if (this.op === "") {
@@ -127,19 +127,19 @@ class Node_StmtAssert extends Node {
                         this.raise("Assertion is untrue");
                     }
                 } else {
-                    rhs = this.children[0].evaluate(runner);
-                    passed = Value.unary(this.op, rhs).asBoolean();
+                    right = this.children[0].evaluate(runner);
+                    passed = Value.unary(this.op, right).asBoolean();
                     if (!passed) {
-                        this.raise("Assertion is untrue: {op}{rhs}", { op: this.op, rhs });
+                        this.raise("Assertion is untrue: {operator}{operand}", { operator: this.op, operand: right });
                     }
                 }
                 return Outcome.THROUGH;
             case 2:
-                lhs = this.children[0].evaluate(runner);
-                rhs = this.children[1].evaluate(runner);
-                passed = Value.binary(lhs, this.op, rhs).asBoolean();
+                left = this.children[0].evaluate(runner);
+                right = this.children[1].evaluate(runner);
+                passed = Value.binary(left, this.op, right).asBoolean();
                 if (!passed) {
-                    this.raise("Assertion is untrue: {lhs} {op} {rhs}", { lhs, op: this.op, rhs });
+                    this.raise("Assertion is untrue: {left} {operator} {right}", { left, operator: this.op, right });
                 }
                 return Outcome.THROUGH;
         }

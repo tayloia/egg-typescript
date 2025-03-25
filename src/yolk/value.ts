@@ -284,6 +284,30 @@ export class Value {
     static fromVanillaFunction(definition: FunctionDefinition, elements?: ValueMap) {
         return Value.fromProxy(new ProxyVanillaFunction(definition, elements ?? new ValueMap()));
     }
+    static fromUnknown(value: unknown): Value {
+        switch (typeof value) {
+            case "boolean":
+                return Value.fromBool(value);
+            case "bigint":
+                return Value.fromInt(value);
+            case "number":
+                return Value.fromFloat(value);
+            case "string":
+                return Value.fromString(value);
+            case "function":
+            case "symbol":
+            case "undefined":
+                return Value.VOID;
+            case "object":
+                if (value === null) {
+                    return Value.NULL;
+                }
+                if ("kind" in value && "underlying" in value) {
+                    return new Value(value.underlying as ValueUnderlying, value.kind as Value.Kind);
+                }
+                return Value.VOID;
+        }
+    }
     static unary(op: string, rhs_: Value): Value  {
         assert.fail("Unknown unary operator: '{op}'", {op, caller:Value.unary});
     }
