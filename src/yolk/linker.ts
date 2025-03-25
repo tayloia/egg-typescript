@@ -364,7 +364,7 @@ class Node_StmtForeach extends Node {
             }
             return Outcome.THROUGH;
         }
-        this.raise(`Cannot iterate around ${expr.describe()}`, { value: expr });
+        this.expr.raise("Value of type '{type}' is not iterable in 'for' statement", { type: this.type.describe() });
     }
     modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
