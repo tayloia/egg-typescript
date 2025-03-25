@@ -923,6 +923,28 @@ class Node_ValueOperatorBinary extends Node {
     }
 }
 
+class Node_ValueOperatorTernary extends Node {
+    constructor(location: Location, public lhs: Node, public mid: Node, public rhs: Node) {
+        super(location);
+    }
+    resolve(resolver: Program.IResolver): Type {
+        this.unimplemented(resolver);
+    }
+    evaluate(runner: Program.IRunner): Value {
+        const lhs = this.lhs.evaluate(runner);
+        if (lhs.kind !== Value.Kind.Bool) {
+            this.lhs.raise(`Expected condition of ternary operator '?:' to be a 'bool', but instead got ${lhs.describe()}`, { value: lhs });
+        }
+        return lhs.asBoolean() ? this.mid.evaluate(runner) : this.rhs.evaluate(runner);
+    }
+    execute(runner: Program.IRunner): Outcome {
+        this.unimplemented(runner);
+    }
+    modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
+    }
+}
+
 class Module implements Program.IModule {
     constructor(public readonly root: Node, public readonly source: string) {}
 }
@@ -1009,6 +1031,9 @@ class Impl implements Program.IResolver {
             case Compiler.Kind.ValueOperatorBinary:
                 assert.eq(node.children.length, 2);
                 return new Node_ValueOperatorBinary(node.location, this.linkNode(node.children[0]), node.value.asString(), this.linkNode(node.children[1]));
+            case Compiler.Kind.ValueOperatorTernary:
+                assert.eq(node.children.length, 3);
+                return new Node_ValueOperatorTernary(node.location, this.linkNode(node.children[0]), this.linkNode(node.children[1]), this.linkNode(node.children[2]));
         }
         assert.fail("Unknown node kind in linkNode: {kind}", {kind:node.kind});
     }

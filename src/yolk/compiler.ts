@@ -187,6 +187,9 @@ class Impl extends Logger {
             case Parser.Kind.OperatorBinary:
                 assert.eq(pnode.children.length, 2);
                 return this.compileExprBinary(pnode.children[0], pnode.value.asString(), pnode.children[1]);
+            case Parser.Kind.OperatorTernary:
+                assert.eq(pnode.children.length, 3);
+                return this.compileExprTernary(pnode.children[0], pnode.children[1], pnode.children[2]);
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
@@ -210,6 +213,11 @@ class Impl extends Logger {
         const children = [this.compileExpr(plhs), this.compileExpr(prhs)];
         const location = children[0].location.span(children[1].location);
         return new Node(location, Compiler.Kind.ValueOperatorBinary, children, Value.fromString(op));
+    }
+    compileExprTernary(plhs: Parser.INode, pmid: Parser.INode, prhs: Parser.INode): Node {
+        const children = [this.compileExpr(plhs), this.compileExpr(pmid), this.compileExpr(prhs)];
+        const location = children[0].location.span(children[1].location);
+        return new Node(location, Compiler.Kind.ValueOperatorTernary, children);
     }
     compileExprArguments(pnode: Parser.INode): Node[] {
         assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
@@ -273,7 +281,9 @@ export namespace Compiler {
         ValueVariableGet = "value-variable-get",
         ValuePropertyGet = "value-property-get",
         ValueIndexGet = "value-index-get",
+        ValueOperatorUnary = "value-operator-unary",
         ValueOperatorBinary = "value-operator-binary",
+        ValueOperatorTernary = "value-operator-ternary",
     }
     export interface INode {
         kind: Kind;

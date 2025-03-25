@@ -532,7 +532,7 @@ class Impl extends Logger {
         const lhs = this.parseValueExpressionBinary(lookahead);
         if (lhs && this.isPunctuation(lhs.lookahead, "?") && !this.isPunctuation(lhs.lookahead, "??")) {
             const mid = this.parseValueExpression(lhs.lookahead + 1);
-            if (mid && this.isPunctuation(lhs.lookahead, ":")) {
+            if (mid && this.isPunctuation(mid.lookahead, ":")) {
                 const rhs = this.parseValueExpression(mid.lookahead + 1);
                 if (rhs) {
                     return new Success(Node.createOperatorTernary(lhs.node, mid.node, rhs.node, "?:"), rhs.lookahead);

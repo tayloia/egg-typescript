@@ -3,9 +3,7 @@ import { inspect } from "util";
 export class Location {
     constructor(public source: string, public line0: number, public column0: number, public line1: number = 0, public column1: number = 0) {}
     span(that: Location): Location {
-        this.line1 = that.line1;
-        this.column1 = that.column1;
-        return this;
+        return new Location(this.source, this.line0, this.column0, that.line1, that.column1);
     }
     format() {
         function range(lbound: number, ubound: number): string {
