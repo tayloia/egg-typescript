@@ -24,7 +24,7 @@ class ManifestationBase implements Value.IProxy {
         if (found) {
             return Value.fromProxy(found);
         }
-        throw new RuntimeException("Property not known: '{type}.{property}'", { type: this.name, property });
+        throw new RuntimeException("Type '{type}' does not have a static property named '{property}'", { type: this.name, property });
     }
     setProperty(property_: string, value_: Value): Value {
         this.unimplemented();

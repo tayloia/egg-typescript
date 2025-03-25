@@ -579,7 +579,12 @@ class Node_ValuePropertyGet extends Node {
             this.raise("Unknown property for 'string': '{property}'", { property: this.property });
         }
         if (value.kind === Value.Kind.Proxy) {
-            return value.getProxy().getProperty(this.property);
+            try {
+                return value.getProxy().getProperty(this.property);
+            }
+            catch (error) {
+                this.catch(error);
+            }
         }
         assert.fail(`Cannot get property for ${value.kind}`);
     }
