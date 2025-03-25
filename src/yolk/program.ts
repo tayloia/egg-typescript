@@ -23,7 +23,7 @@ export namespace Program {
     }
     export abstract class Runner extends Resolver {
         abstract manifestations: Manifestations;
-        abstract thrown: Value;
+        abstract caught: Value;
         abstract scopePush(): void;
         abstract scopePop(): void;
         abstract symbolAdd(symbol: string, flavour: SymbolFlavour, type: Type, value: Value): void;
@@ -47,10 +47,10 @@ class Runner extends Program.Runner {
         const print = new Builtins.Print();
         this.symbols.add("print", SymbolFlavour.Builtin, print.type, print.value);
         this.manifestations = Manifestations.createDefault();
-        this.thrown = Value.VOID;
+        this.caught = Value.VOID;
     }
     manifestations: Manifestations;
-    thrown: Value;
+    caught: Value;
     symbols: SymbolTable;
     log(entry: Logger.Entry): void {
         this.logger.log(entry);

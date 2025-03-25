@@ -67,7 +67,7 @@ export class TestProgram extends TestLogger {
             case Logger.Severity.Trace:
                 return format("<TRACE>");
             case Logger.Severity.Print:
-                return entry.message;
+                return entry.message.replace(this.source, "<RESOURCE>");
         }
     }
     get output(): string {

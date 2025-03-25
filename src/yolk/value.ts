@@ -2,7 +2,7 @@ import { inspect } from "util";
 
 import { assert } from "./assertion";
 import { RuntimeException } from "./exception";
-import { ProxyVanillaArray, ProxyVanillaFunction, ProxyVanillaObject } from "./proxy";
+import { ProxyRuntimeException, ProxyVanillaArray, ProxyVanillaFunction, ProxyVanillaObject } from "./proxy";
 import { Program } from "./program";
 import { ValueMap } from "./valuemap";
 import { FunctionArguments, FunctionDefinition } from "./function";
@@ -271,6 +271,9 @@ export class Value {
     }
     static fromProxy(value: Value.Proxy) {
         return new Value(value, Value.Kind.Proxy);
+    }
+    static fromRuntimeException(exception: RuntimeException) {
+        return Value.fromProxy(new ProxyRuntimeException(exception));
     }
     static fromVanillaArray(elements: Array<Value>) {
         return Value.fromProxy(new ProxyVanillaArray(elements));

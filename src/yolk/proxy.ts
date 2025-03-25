@@ -67,6 +67,21 @@ export class ProxyStringMethod extends ProxyBase {
     }
 }
 
+export class ProxyRuntimeException extends ProxyBase {
+    constructor(private exception: RuntimeException) {
+        super();
+    }
+    toUnderlying(): unknown {
+        return this.exception;
+    }
+    toString(): string {
+        return this.exception.format(true);
+    }
+    describe(): string {
+        return "an exception";
+    }
+}
+
 export class ProxyVanillaArray extends ProxyBase {
     constructor(private elements: Value[]) {
         super();

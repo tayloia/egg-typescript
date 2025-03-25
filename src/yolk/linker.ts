@@ -443,6 +443,7 @@ class Node_StmtTry extends Node {
         catch (error) {
             const exception = Exception.from(error);
             if (exception && exception.origin === Exception.Origin.Runtime) {
+                runner.caught = Value.fromRuntimeException(exception);
                 for (const clause of this.catchClauses) {
                     outcome = clause.execute(runner);
                     switch (outcome.flow) {
@@ -489,7 +490,7 @@ class Node_StmtCatch extends Node {
     }
     execute(runner: Program.Runner): Outcome {
         const type = this.type.resolve(runner);
-        const exception = type.compatible(runner.thrown);
+        const exception = type.compatible(runner.caught);
         if (exception.isVoid()) {
             return Outcome.CONTINUE;
         }
