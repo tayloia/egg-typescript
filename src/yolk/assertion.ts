@@ -40,6 +40,10 @@ assert.fail = function(message?: string, parameters?: Message.Parameters): never
     throw new AssertionException(message ?? "Assertion failure", parameters);
 }
 
+assert.unreachable = function(parameters?: Message.Parameters): never {
+    assert.fail("Assertion failure: '{caller}' is unreachable", { ...parameters, caller: assert.unreachable });
+}
+
 assert.binop = function(predicate: boolean, lhs: unknown, rhs: unknown, op: string, caller: unknown): void {
     if (!predicate) {
         assert.fail(`Assertion failure: lhs ${op} rhs\n  lhs=${JSON.stringify(lhs)}\n  rhs=${JSON.stringify(rhs)}`, {lhs,rhs,op,caller});

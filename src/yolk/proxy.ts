@@ -1,7 +1,7 @@
 import { inspect } from "util";
 
 import { assert } from "./assertion";
-import { Exception, RuntimeException } from "./exception";
+import { RuntimeException } from "./exception";
 import { ToStringOptions, Value } from "./value";
 import { Program } from "./program";
 import { Message } from "./message";
@@ -9,32 +9,32 @@ import { ValueMap } from "./valuemap";
 import { FunctionArguments, FunctionDefinition } from "./function";
 
 abstract class ProxyBase implements Value.Proxy {
-    getProperty(property: string): Value | Exception {
-        return this.unsupported("Properties are", {property});
+    getProperty(property: string): Value {
+        this.unsupported("Properties are", {property});
     }
-    setProperty(property: string, value_: Value): Value | Exception {
-        return this.unsupported("Property modification is", {property});
+    setProperty(property: string, value_: Value): Value {
+        this.unsupported("Property modification is", {property});
     }
-    mutProperty(property: string, op_: string, lazy_: () => Value): Value | Exception {
-        return this.unsupported("Property mutation is", {property});
+    mutProperty(property: string, op_: string, lazy_: () => Value): Value {
+        this.unsupported("Property mutation is", {property});
     }
-    delProperty(property: string): Value | Exception {
-        return this.unsupported("Property deletion is", {property});
+    delProperty(property: string): Value {
+        this.unsupported("Property deletion is", {property});
     }
-    getIndex(index: Value): Value | Exception {
-        return this.unsupported("Indexing is", {index});
+    getIndex(index: Value): Value {
+        this.unsupported("Indexing is", {index});
     }
-    setIndex(index: Value, value_: Value): Value | Exception {
-        return this.unsupported("Modification by index is", {index});
+    setIndex(index: Value, value_: Value): Value {
+        this.unsupported("Modification by index is", {index});
     }
-    mutIndex(index: Value, op_: string, lazy_: () => Value): Value | Exception {
-        return this.unsupported("Mutation by index is", {index});
+    mutIndex(index: Value, op_: string, lazy_: () => Value): Value {
+        this.unsupported("Mutation by index is", {index});
     }
-    delIndex(index: Value): Value | Exception {
-        return this.unsupported("Deletion by index is", {index});
+    delIndex(index: Value): Value {
+        this.unsupported("Deletion by index is", {index});
     }
-    invoke(runner_: Program.Runner, args_: FunctionArguments): Value | Exception {
-        return this.unsupported("Function invocation '()' is");
+    invoke(runner_: Program.Runner, args_: FunctionArguments): Value {
+        this.unsupported("Function invocation '()' is");
     }
     [inspect.custom]() {
         return this.toDebug();
@@ -47,11 +47,11 @@ abstract class ProxyBase implements Value.Proxy {
     }
     abstract toString(): string;
     abstract describe(): string;
-    protected unknown(property: string, parameters?: Message.Parameters): Exception {
-        return new RuntimeException(`Unknown property '{property}' for ${this.describe()}`, { ...parameters, property });
+    protected unknown(property: string, parameters?: Message.Parameters): never {
+        throw new RuntimeException(`Unknown property '{property}' for ${this.describe()}`, { ...parameters, property });
     }
-    protected unsupported(message: string, parameters?: Message.Parameters): Exception {
-        return new RuntimeException(`${message} not supported by ${this.describe()}`, parameters);
+    protected unsupported(message: string, parameters?: Message.Parameters): never {
+        throw new RuntimeException(`${message} not supported by ${this.describe()}`, parameters);
     }
 }
 
@@ -71,29 +71,29 @@ export class ProxyVanillaArray extends ProxyBase {
     constructor(private elements: Value[]) {
         super();
     }
-    getProperty(property: string): Value | Exception {
+    getProperty(property: string): Value {
         switch (property) {
             case "length":
                 return Value.fromInt(BigInt(this.elements.length));
         }
         return this.unknown(property);
     }
-    setProperty(property: string, value: Value): Value | Exception {
+    setProperty(property: string, value: Value): Value {
         switch (property) {
             case "length":
                 return this.setLength(value.getInt().toNumber());
         }
-        return this.unsupported("Modification of property '{property}' is", {property, value})
+        this.unsupported("Modification of property '{property}' is", {property, value})
     }
-    getIndex(index: Value): Value | Exception {
+    getIndex(index: Value): Value {
         if (index.kind === Value.Kind.Int) {
             const i = index.getInt().toNumber();
             assert(i >= 0 && i < this.elements.length);
             return this.elements[i];
         }
-        return new RuntimeException("Indexing is not supported by type 'ProxyVanillaArray'", {index});
+        throw new RuntimeException("Indexing is not supported by type 'ProxyVanillaArray'", {index});
     }
-    setIndex(index: Value, value: Value): Value | Exception {
+    setIndex(index: Value, value: Value): Value {
         this.elements[index.asNumber()] = value;
         return Value.VOID;
     }
@@ -109,7 +109,7 @@ export class ProxyVanillaArray extends ProxyBase {
     describe(): string {
         return "an array value";
     }
-    private setLength(length: number): Value | Exception {
+    private setLength(length: number): Value {
         let fill = this.elements.length;
         this.elements.length = length;
         while (fill < length) {
@@ -123,16 +123,20 @@ export class ProxyVanillaObject extends ProxyBase {
     constructor(protected entries: ValueMap) {
         super();
     }
-    getProperty(property: string): Value | Exception {
+    getProperty(property: string): Value {
         const key = Value.fromString(property);
-        return this.entries.get(key) ?? new RuntimeException("Unknown property for type 'ProxyVanillaObject': '{property}'", {property});
+        const value = this.entries.get(key);
+        if (value === undefined) {
+            throw new RuntimeException("Unknown property for type 'ProxyVanillaObject': '{property}'", {property});
+        }
+        return value;
     }
-    setProperty(property: string, value: Value): Value | Exception {
+    setProperty(property: string, value: Value): Value {
         const key = Value.fromString(property);
         this.entries.set(key, value);
         return Value.VOID;
     }
-    delProperty(property: string): Value | Exception {
+    delProperty(property: string): Value {
         const key = Value.fromString(property);
         const value = this.entries.get(key);
         if (value) {

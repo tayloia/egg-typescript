@@ -6,6 +6,8 @@ export enum SymbolFlavour {
     Builtin = "builtin",
     Manifestation = "manifestation",
     Function = "function",
+    Argument = "argument",
+    Exception = "exception",
     Variable = "variable",
 }
 

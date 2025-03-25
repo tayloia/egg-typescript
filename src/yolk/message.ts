@@ -10,7 +10,7 @@ export class Message extends Error {
     get origin() {
         return this.parameters.origin as Message.Origin;
     }
-   get message() {
+    get message() {
         return this.format(true);
     }
     format(prefixLocation: boolean) {

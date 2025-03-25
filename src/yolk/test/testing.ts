@@ -96,13 +96,13 @@ export class TestProgram extends TestLogger {
             return undefined;
         };
         const makeActual = (index: number) => this.entryToOutput(this.logged[index]);
-        const makeStack = (line: number) => `    at script (${this.source}:${line})`;
+        const makeStack = (line: number) => `    at <egg-script> (${this.source}:${line})`;
         assert(this.logged.length === 0);
         try {
             this.run();
         }
         catch (exception) {
-            this.exception(exception);
+            this.trap(exception);
         }
         let logged = 0;
         let line = 0;

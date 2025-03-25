@@ -2,10 +2,8 @@ import { assert } from "./assertion";
 import { Builtins } from "./builtins";
 import { RuntimeException } from "./exception";
 import { FunctionArguments } from "./function";
-import { Location } from "./location";
 import { Logger } from "./logger";
 import { Manifestations } from "./manifestations";
-import { Message } from "./message";
 import { SymbolFlavour, SymbolTable } from "./symboltable";
 import { Type } from "./type";
 import { Value } from "./value";
@@ -20,16 +18,18 @@ export class Program {
 
 export namespace Program {
     export type Callsite = (runner: Runner, args: FunctionArguments) => Value;
-    export abstract class Runner extends Logger {
-        abstract location: Location;
+    export abstract class Resolver extends Logger {
+        abstract resolveIdentifier(identifier: string): Type;
+    }
+    export abstract class Runner extends Resolver {
         abstract manifestations: Manifestations;
+        abstract thrown: Value;
+        abstract scopePush(): void;
+        abstract scopePop(): void;
         abstract symbolAdd(symbol: string, flavour: SymbolFlavour, type: Type, value: Value): void;
         abstract symbolGet(symbol: string): Value;
         abstract symbolSet(symbol: string, value: Value): void;
         abstract symbolMut(symbol: string, op: string, lazy: () => Value): Value;
-        raise(message: string, parameters?: Message.Parameters): never {
-            throw new RuntimeException(message, { ...parameters, location: this.location });
-        }
     }
     export interface Node {
         execute(runner: Runner): void;
@@ -46,18 +46,31 @@ class Runner extends Program.Runner {
         this.symbols = new SymbolTable();
         const print = new Builtins.Print();
         this.symbols.add("print", SymbolFlavour.Builtin, print.type, print.value);
-        this.location = new Location("", 0, 0);
         this.manifestations = Manifestations.createDefault();
+        this.thrown = Value.VOID;
     }
-    location: Location;
     manifestations: Manifestations;
+    thrown: Value;
     symbols: SymbolTable;
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
     }
+    resolveIdentifier(identifier: string): Type {
+        const entry = this.symbols.find(identifier);
+        if (!entry) {
+            throw new RuntimeException("Identifier not found in symbol table (resolveIdentifier): '{identifier}'", {identifier});
+        }
+        return entry.type;
+    }
     run(): void {
         assert.eq(this.program.modules.length, 1);
         this.program.modules[0].root.execute(this);
+    }
+    scopePush() {
+        this.symbols.push();
+    }
+    scopePop() {
+        this.symbols.pop();
     }
     symbolAdd(symbol: string, flavour: SymbolFlavour, type: Type, value: Value): void {
         if (value.isVoid()) {
@@ -65,7 +78,7 @@ class Runner extends Program.Runner {
         } else {
             const compatible = type.compatible(value);
             if (compatible.isVoid()) {
-                this.raise("Cannot initialize '{symbol}' of type '{dsttype}' with {srctype}", {
+                throw new RuntimeException("Cannot initialize '{symbol}' of type '{dsttype}' with {srctype}", {
                     symbol,
                     dsttype: type.describe(),
                     srctype:value.describe()
@@ -77,18 +90,18 @@ class Runner extends Program.Runner {
     symbolGet(symbol: string): Value {
         const entry = this.symbols.find(symbol);
         if (!entry) {
-            this.raise("Variable not found in symbol table (get): '{symbol}'", {symbol});
+            throw new RuntimeException("Variable not found in symbol table (get): '{symbol}'", {symbol});
         }
         return entry.value;
     }
     symbolSet(symbol: string, value: Value): void {
         const entry = this.symbols.find(symbol);
         if (entry === undefined) {
-            this.raise("Variable not found in symbol table (set): '{symbol}'", {symbol});
+            throw new RuntimeException("Variable not found in symbol table (set): '{symbol}'", {symbol});
         }
         const compatible = entry.type.compatible(value);
         if (compatible.isVoid()) {
-            this.raise("Cannot assign value of type '{type}' to variable '{symbol}'", {
+            throw new RuntimeException("Cannot assign value of type '{type}' to variable '{symbol}'", {
                 symbol,
                 type: entry.type.describe()
             });
@@ -98,11 +111,11 @@ class Runner extends Program.Runner {
     symbolMut(symbol: string, op: string, lazy: () => Value): Value {
         const entry = this.symbols.find(symbol);
         if (entry === undefined) {
-            this.raise("Variable not found in symbol table (mut): '{symbol}'", {symbol});
+            throw new RuntimeException("Variable not found in symbol table (mut): '{symbol}'", {symbol});
         }
-        return entry.value.mutate(op, lazy).unwrap();
+        return entry.value.mutate(op, lazy);
     }
     unimplemented(): never {
-        assert.fail("Unimplemented: {caller}", {caller:this.unimplemented});
+        assert.fail("Unimplemented: {caller}", { caller: this.unimplemented });
     }
 }

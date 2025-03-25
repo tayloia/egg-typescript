@@ -1,7 +1,7 @@
 import { inspect } from "util";
 
 import { assert } from "./assertion";
-import { Exception, RuntimeException } from "./exception";
+import { RuntimeException } from "./exception";
 import { ProxyVanillaArray, ProxyVanillaFunction, ProxyVanillaObject } from "./proxy";
 import { Program } from "./program";
 import { ValueMap } from "./valuemap";
@@ -18,7 +18,7 @@ export function compareScalar<T>(lhs: T, rhs: T): Comparison {
 type BinaryInt = (lhs: bigint, rhs: bigint) => bigint;
 type BinaryFloat = (lhs: number, rhs: number) => number;
 
-function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf: BinaryFloat): Value | Exception {
+function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf: BinaryFloat): Value {
     switch (lhs.kind) {
         case Value.Kind.Int:
             switch (rhs.kind) {
@@ -37,12 +37,12 @@ function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf:
             }
             break;
         default:
-            return new RuntimeException(
+            throw new RuntimeException(
                 "Expected left-hand side of arithmetic operator '{op}' to be an 'int' or 'float', but instead got " + lhs.describe(),
                 {lhs, op, rhs}
             );
     }
-    return new RuntimeException(
+    throw new RuntimeException(
         "Expected right-hand side of arithmetic operator '{op}' to be an 'int' or 'float', but instead got " + rhs.describe(),
         {lhs, op, rhs}
     );
@@ -51,7 +51,7 @@ function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf:
 type CompareInt = (lhs: bigint, rhs: bigint) => boolean;
 type CompareFloat = (lhs: number, rhs: number) => boolean;
 
-function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, cf: CompareFloat): Value | Exception {
+function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, cf: CompareFloat): Value {
     switch (lhs.kind) {
         case Value.Kind.Int:
             switch (rhs.kind) {
@@ -70,12 +70,12 @@ function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, c
             }
             break;
         default:
-            return new RuntimeException(
+            throw new RuntimeException(
                 "Expected left-hand side of comparison operator '{op}' to be an 'int' or 'float', but instead got " + lhs.describe(),
                 {lhs, op, rhs}
             );
     }
-    return new RuntimeException(
+    throw new RuntimeException(
         "Expected right-hand side of comparison operator '{op}' to be an 'int' or 'float', but instead got " + rhs.describe(),
         {lhs, op, rhs}
     );
@@ -220,27 +220,24 @@ export class Value {
         this.assign(value);
         return before;
     }
-    mutate(op: string, lazy: () => Value): Value | Exception {
+    mutate(op: string, lazy: () => Value): Value {
         switch (op) {
             case "=":
                 return this.swap(lazy());
             case "++":
             case "--":
                 if (this.kind !== Value.Kind.Int) {
-                    return new RuntimeException("Operator '{op}' can only be applied to values of type 'int'", {op});
+                    throw new RuntimeException("Operator '{op}' can only be applied to values of type 'int'", {op});
                 }
                 return Value.fromInt(this.getInt().mutate(op));
         }
         assert.fail("Unknown mutating operator: '{op}'", {op, caller:this.mutate});
     }
-    invoke(runner: Program.Runner, args: FunctionArguments): Value | Exception {
+    invoke(runner: Program.Runner, args: FunctionArguments): Value {
         if (this.kind !== Value.Kind.Proxy) {
-            return new RuntimeException("Function invocation '()' is not supported by " + this.describe());
+            throw new RuntimeException("Function invocation '()' is not supported by " + this.describe());
         }
         return this.getProxy().invoke(runner, args);
-    }
-    unwrap(..._: unknown[]): Value {
-        return this;
     }
     static fromVoid() {
         return new Value(null, Value.Kind.Void);
@@ -284,10 +281,10 @@ export class Value {
     static fromVanillaFunction(definition: FunctionDefinition, elements?: ValueMap) {
         return Value.fromProxy(new ProxyVanillaFunction(definition, elements ?? new ValueMap()));
     }
-    static unary(op: string, rhs_: Value): Value | Exception  {
+    static unary(op: string, rhs_: Value): Value  {
         assert.fail("Unknown unary operator: '{op}'", {op, caller:Value.unary});
     }
-    static binary(lhs: Value, op: string, rhs: Value): Value | Exception  {
+    static binary(lhs: Value, op: string, rhs: Value): Value  {
         switch (op) {
             case "+":
                 return binaryArithmetic(lhs, op, rhs, (a,b)=>a+b, (a,b)=>a+b);
@@ -562,15 +559,15 @@ export namespace Value {
         }
     }
     export interface Proxy {
-        getProperty(property: string): Value | Exception;
-        setProperty(property: string, value: Value): Value | Exception;
-        mutProperty(property: string, op: string, lazy: () => Value): Value | Exception;
-        delProperty(property: string): Value | Exception;
-        getIndex(index: Value): Value | Exception;
-        setIndex(index: Value, value: Value): Value | Exception;
-        mutIndex(index: Value, op: string, lazy: () => Value): Value | Exception;
-        delIndex(index: Value): Value | Exception;
-        invoke(runner: Program.Runner, args: FunctionArguments): Value | Exception;
+        getProperty(property: string): Value;
+        setProperty(property: string, value: Value): Value;
+        mutProperty(property: string, op: string, lazy: () => Value): Value;
+        delProperty(property: string): Value;
+        getIndex(index: Value): Value;
+        setIndex(index: Value, value: Value): Value;
+        mutIndex(index: Value, op: string, lazy: () => Value): Value;
+        delIndex(index: Value): Value;
+        invoke(runner: Program.Runner, args: FunctionArguments): Value;
         toUnderlying(): unknown;
         toDebug(): string;
         toString(options_?: ToStringOptions): string;

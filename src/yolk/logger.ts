@@ -3,7 +3,7 @@ import { Message } from "./message";
 
 export abstract class Logger {
     abstract log(entry: Logger.Entry): void;
-    exception(error: unknown) {
+    trap(error: unknown) {
         const exception = Exception.from(error);
         if (exception) {
             this.error(exception.reason, exception.parameters);

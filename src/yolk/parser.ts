@@ -763,7 +763,7 @@ class Impl extends Logger {
         });
     }
     private raise(message: string, parameters: Message.Parameters): never {
-        throw this.logger.exception(new ParserException(message, parameters));
+        throw this.logger.trap(new ParserException(message, parameters));
     }
     commit(success: Success): Node {
         this.input.drop(success.lookahead)

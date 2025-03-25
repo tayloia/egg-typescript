@@ -1,5 +1,5 @@
 import { assert } from "./assertion";
-import { Exception, RuntimeException } from "./exception";
+import { RuntimeException } from "./exception";
 import { FunctionArguments } from "./function";
 import { Program } from "./program";
 import { ToStringOptions, Value } from "./value";
@@ -19,35 +19,35 @@ class ManifestationsImpl implements Manifestations {
 
 class ManifestationBase implements Value.Proxy {
     constructor(public name: string, public proxies?: Map<string, Value.Proxy>) {}
-    getProperty(property: string): Value | Exception {
+    getProperty(property: string): Value {
         const found = this.proxies?.get(property);
         if (found) {
             return Value.fromProxy(found);
         }
-        return new RuntimeException("Property not known: '{type}.{property}'", { type: this.name, property });
+        throw new RuntimeException("Property not known: '{type}.{property}'", { type: this.name, property });
     }
-    setProperty(property_: string, value_: Value): Value | Exception {
+    setProperty(property_: string, value_: Value): Value {
         this.unimplemented();
     }
-    mutProperty(property_: string, op_: string, lazy_: () => Value): Value | Exception {
+    mutProperty(property_: string, op_: string, lazy_: () => Value): Value {
         this.unimplemented();
     }
-    delProperty(property_: string): Value | Exception {
+    delProperty(property_: string): Value {
         this.unimplemented();
     }
-    getIndex(index_: Value): Value | Exception {
+    getIndex(index_: Value): Value {
         this.unimplemented();
     }
-    setIndex(index_: Value, value_: Value): Value | Exception {
+    setIndex(index_: Value, value_: Value): Value {
         this.unimplemented();
     }
-    mutIndex(index_: Value, op_: string, lazy_: () => Value): Value | Exception {
+    mutIndex(index_: Value, op_: string, lazy_: () => Value): Value {
         this.unimplemented();
     }
-    delIndex(index_: Value): Value | Exception {
+    delIndex(index_: Value): Value {
         this.unimplemented();
     }
-    invoke(runner_: Program.Runner, args_: FunctionArguments): Value | Exception {
+    invoke(runner_: Program.Runner, args_: FunctionArguments): Value {
         this.unimplemented();
     }
     toUnderlying(): unknown {
@@ -72,7 +72,7 @@ class ManifestationString extends ManifestationBase {
         super("string", new Map([
         ]));
     }
-    invoke(runner_: Program.Runner, args: FunctionArguments): Value | Exception {
+    invoke(runner_: Program.Runner, args: FunctionArguments): Value {
         const text = args.arguments.map(arg => arg.toString()).join("");
         return Value.fromString(text);
     }
@@ -119,7 +119,7 @@ class ManifestationObjectPropertyDel extends ManifestationBase {
     constructor() {
         super("object.property.del");
     }
-    invoke(runner_: Program.Runner, args: FunctionArguments): Value | Exception {
+    invoke(runner_: Program.Runner, args: FunctionArguments): Value {
         args.expect(2);
         const proxy = args.expectProxy(0);
         const property = args.expectString(1);
