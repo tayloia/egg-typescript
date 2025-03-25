@@ -58,13 +58,13 @@ class Impl extends Logger {
                 return new Node(pnode.location, Compiler.Kind.StmtCatch, [this.compileType(pnode.children[0]), this.compileStmt(pnode.children[1])], pnode.value);
             case Parser.Kind.StatementAssign:
                 assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Compiler.Kind.StmtAssign, [this.compileTarget(pnode.children[0]), this.compileExpr(pnode.children[1])]);
+                return new Node(pnode.location, Compiler.Kind.StmtAssign, [this.compileTarget(pnode.location, pnode.children[0]), this.compileExpr(pnode.children[1])]);
             case Parser.Kind.StatementMutate:
                 assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Compiler.Kind.StmtMutate, [this.compileTarget(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value);
+                return new Node(pnode.location, Compiler.Kind.StmtMutate, [this.compileTarget(pnode.location, pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value);
             case Parser.Kind.StatementNudge:
                 assert.eq(pnode.children.length, 1);
-                return new Node(pnode.location, Compiler.Kind.StmtNudge, [this.compileTarget(pnode.children[0])], pnode.value);
+                return new Node(pnode.location, Compiler.Kind.StmtNudge, [this.compileTarget(pnode.location, pnode.children[0])], pnode.value);
             case Parser.Kind.StatementForeach:
                 assert.eq(pnode.children.length, 3);
                 return new Node(pnode.location, Compiler.Kind.StmtForeach, [
@@ -139,17 +139,17 @@ class Impl extends Logger {
         }
         assert.fail("Unknown node kind in compileType: {kind}", {kind:pnode.kind});
     }
-    compileTarget(pnode: Parser.INode): Node {
+    compileTarget(location: Location, pnode: Parser.INode): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
                 assert.eq(pnode.children.length, 0);
-                return new Node(pnode.location, Compiler.Kind.TargetVariable, [], pnode.value);
+                return new Node(location, Compiler.Kind.TargetVariable, [], pnode.value);
             case Parser.Kind.PropertyAccess:
                 assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Compiler.Kind.TargetProperty, [this.compileExpr(pnode.children[0]), this.compilePropertyIdentifier(pnode.children[1])]);
+                return new Node(location, Compiler.Kind.TargetProperty, [this.compileExpr(pnode.children[0]), this.compilePropertyIdentifier(pnode.children[1])]);
             case Parser.Kind.IndexAccess:
                 assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Compiler.Kind.TargetIndex, [this.compileExpr(pnode.children[0]), this.compileExpr(pnode.children[1])]);
+                return new Node(location, Compiler.Kind.TargetIndex, [this.compileExpr(pnode.children[0]), this.compileExpr(pnode.children[1])]);
         }
         assert.fail("Unknown node kind in compileTarget: {kind}", {kind:pnode.kind});
     }

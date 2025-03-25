@@ -234,7 +234,12 @@ class Node_StmtFunctionDefine extends Node {
                 runner.scopePop();
             }
         });
-        runner.symbolAdd(this.signature.name, SymbolFlavour.Function, definition.type, Value.fromVanillaFunction(definition));
+        try {
+            runner.symbolAdd(this.signature.name, SymbolFlavour.Function, definition.type, Value.fromVanillaFunction(definition));
+        }
+        catch (error) {
+            this.catch(error);
+        }
         return Outcome.THROUGH;
     }
     modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
@@ -538,7 +543,12 @@ class Node_ValueVariableGet extends Node {
         return resolver.resolveIdentifier(this.identifier);
     }
     evaluate(runner: Program.IRunner): Value {
-        return runner.symbolGet(this.identifier);
+        try {
+            return runner.symbolGet(this.identifier);
+        }
+        catch (error) {
+            this.catch(error);
+        }
     }
     execute(runner: Program.IRunner): Outcome {
         this.unimplemented(runner);
@@ -712,11 +722,16 @@ class Node_TargetVariable extends Node {
         this.unimplemented(runner);
     }
     modify(runner: Program.IRunner, op: string, expr: Node): Value {
-        if (op === "") {
-            runner.symbolSet(this.identifier, expr.evaluate(runner));
-            return Value.VOID;
+        try {
+            if (op === "") {
+                runner.symbolSet(this.identifier, expr.evaluate(runner));
+                return Value.VOID;
+            }
+            return runner.symbolMut(this.identifier, op, () => expr.evaluate(runner));
         }
-        return runner.symbolMut(this.identifier, op, () => expr.evaluate(runner));
+        catch (error) {
+            this.catch(error);
+        }
     }
 }
 

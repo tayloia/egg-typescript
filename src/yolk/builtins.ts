@@ -6,13 +6,16 @@ import { ProxyStringMethod } from "./proxy";
 import { Type } from "./type";
 import { Value } from "./value";
 
-const LOCATION = new Location("(builtin)", 0, 0);
+const LOCATION = new Location("(built-in)", 0, 0);
 
 export namespace Builtins {
+    export interface Builtin {
+        readonly definition: FunctionDefinition;
+        readonly value: Value;
+    }
     export class Print {
         readonly signature = new FunctionSignature("print", LOCATION, Type.VOID, []);
         readonly definition = new FunctionDefinition(this.signature, this.invoke);
-        readonly type = Type.OBJECT;
         readonly value = Value.fromVanillaFunction(this.definition);
         private invoke(runner: Program.IRunner, args: FunctionArguments): Value {
             const text = args.arguments.map(arg => arg.toString()).join("");

@@ -1,4 +1,4 @@
 int f = 42.0;
 print(f);
-///<RUNTIME><ERROR><RESOURCE>(1,9-12): Cannot initialize 'f' of type 'int' with a value of type 'float'
-//TODO //<COMPILER><ERROR><RESOURCE>(1,9-12): Cannot initialize 'f' of type 'int' with a value of type 'float'
+///<RUNTIME><ERROR><RESOURCE>(1,9-12): Cannot initialize variable 'f' of type 'int' with a value of type 'float'
+//TODO //<COMPILER><ERROR><RESOURCE>(1,9-12): Cannot initialize variable 'f' of type 'int' with a value of type 'float'

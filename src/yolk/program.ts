@@ -42,11 +42,10 @@ export namespace Program {
 
 class Runner implements Program.IRunner {
     constructor(public program: Program, public logger: Logger) {
-        this.symbols = new SymbolTable();
-        const print = new Builtins.Print();
-        this.symbols.add("print", SymbolFlavour.Builtin, print.type, print.value);
         this.manifestations = Manifestations.createDefault();
         this.caught = Value.VOID;
+        this.symbols = new SymbolTable();
+        this.symbolBuiltin(new Builtins.Print());
     }
     manifestations: Manifestations;
     caught: Value;
@@ -71,36 +70,48 @@ class Runner implements Program.IRunner {
     scopePop() {
         this.symbols.pop();
     }
+    symbolBuiltin(builtin: Builtins.Builtin) {
+        if (!this.symbols.add(builtin.definition.signature.name, SymbolFlavour.Builtin, builtin.definition.type, builtin.value)) {
+            throw new RuntimeException("Duplicate built-in definition: '{builtin}'", {builtin:builtin.definition.signature.name});
+        }
+    }
     symbolAdd(symbol: string, flavour: SymbolFlavour, type: Type, value: Value): void {
-        if (value.isVoid()) {
-            this.symbols.add(symbol, flavour, type, value);
-        } else {
+        if (!value.isVoid()) {
             const compatible = type.compatible(value);
             if (compatible.isVoid()) {
-                throw new RuntimeException(`Cannot initialize '{symbol}' of type '{type}' with ${value.describe()}`, {
+                throw new RuntimeException(`Cannot initialize ${flavour} '{symbol}' of type '{type}' with ${value.describe()}`, {
                     symbol,
                     type: type.describe(),
                     value: value,
                 });
             }
-            this.symbols.add(symbol, flavour, type, compatible);
+            value = compatible;
+        }
+        if (!this.symbols.add(symbol, flavour, type, value)) {
+            throw new RuntimeException("Symbol already exists in symbol table (add): '{symbol}'", {symbol});
         }
     }
     symbolGet(symbol: string): Value {
         const entry = this.symbols.find(symbol);
-        if (!entry) {
-            throw new RuntimeException("Variable not found in symbol table (get): '{symbol}'", {symbol});
+        if (entry === undefined) {
+            throw new RuntimeException("Symbol not found in symbol table: '{symbol}'", {symbol});
         }
         return entry.value;
     }
     symbolSet(symbol: string, value: Value): void {
         const entry = this.symbols.find(symbol);
         if (entry === undefined) {
-            throw new RuntimeException("Variable not found in symbol table (set): '{symbol}'", {symbol});
+            throw new RuntimeException("Cannot assign unknown symbol in symbol table: '{symbol}'", {symbol});
+        }
+        switch (entry.flavour) {
+            case SymbolFlavour.Builtin:
+            case SymbolFlavour.Manifestation:
+            case SymbolFlavour.Function:
+                throw new RuntimeException(`Cannot re-assign ${entry.flavour} value: '{symbol}'`, {symbol});
         }
         const compatible = entry.type.compatible(value);
         if (compatible.isVoid()) {
-            throw new RuntimeException(`Cannot assign ${value.describe()} to variable '{symbol}' of type '{type}'`, {
+            throw new RuntimeException(`Cannot assign ${value.describe()} to ${entry.flavour} '{symbol}' of type '{type}'`, {
                 symbol,
                 type: entry.type.describe(),
                 value: value,
@@ -111,7 +122,13 @@ class Runner implements Program.IRunner {
     symbolMut(symbol: string, op: string, lazy: () => Value): Value {
         const entry = this.symbols.find(symbol);
         if (entry === undefined) {
-            throw new RuntimeException("Variable not found in symbol table (mut): '{symbol}'", {symbol});
+            throw new RuntimeException("Cannot mutate unknown symbol in symbol table: '{symbol}'", {symbol});
+        }
+        switch (entry.flavour) {
+            case SymbolFlavour.Builtin:
+            case SymbolFlavour.Manifestation:
+            case SymbolFlavour.Function:
+                throw new RuntimeException(`Cannot mutate ${entry.flavour} value: '{symbol}'`, {symbol});
         }
         return entry.value.mutate(op, lazy);
     }

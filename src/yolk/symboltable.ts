@@ -3,7 +3,7 @@ import { Type } from "./type";
 import { Value } from "./value";
 
 export enum SymbolFlavour {
-    Builtin = "builtin",
+    Builtin = "built-in",
     Manifestation = "manifestation",
     Function = "function",
     Argument = "argument",
@@ -27,12 +27,18 @@ export class SymbolTable {
         this.frame = new SymbolTableFrame(this.frame);
     }
     pop() {
-        assert.truthy(this.frame.chain, "No more frames in symbol table (pop)");
-        this.frame = this.frame.chain;
+        if (this.frame.chain) {
+            this.frame = this.frame.chain;
+        } else {
+            assert.unreachable();
+        }
     }
-    add(symbol: string, flavour: SymbolFlavour, type: Type, initializer: Value) {
-        assert(!this.frame.has(symbol), "Key already extant in symbol table (define): '{symbol}'", {symbol});
+    add(symbol: string, flavour: SymbolFlavour, type: Type, initializer: Value): boolean {
+        if (this.frame.has(symbol)) {
+            return false;
+        }
         this.frame.set(symbol, new SymbolTableEntry(symbol, flavour, type, initializer));
+        return true;
     }
     find(symbol: string): SymbolTableEntry | undefined {
         let frame: SymbolTableFrame | undefined = this.frame;

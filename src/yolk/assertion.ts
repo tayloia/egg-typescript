@@ -41,7 +41,7 @@ assert.fail = function(message?: string, parameters?: Message.Parameters): never
 }
 
 assert.unreachable = function(parameters?: Message.Parameters): never {
-    assert.fail("Assertion failure: '{caller}' is unreachable", { ...parameters, caller: assert.unreachable });
+    assert.fail("Assertion failure: Unreachable code in '{caller}'", { ...parameters, caller: assert.unreachable });
 }
 
 assert.binop = function(predicate: boolean, lhs: unknown, rhs: unknown, op: string, caller: unknown): asserts predicate is true {
@@ -72,16 +72,4 @@ assert.gt = function(lhs: number, rhs: number): void {
 
 assert.ge = function(lhs: number, rhs: number): void {
     assert.binop(lhs >= rhs, lhs, rhs, ">=", assert.ge);
-}
-
-assert.falsey = function(value: unknown, message?: string, parameters?: Message.Parameters): asserts value is undefined | null | false {
-    if (value) {
-        assert.fail(message ?? `Assertion failure: value not falsey: ${JSON.stringify(value)}`, {value,...parameters,caller:assert.truthy});
-    }
-}
-
-assert.truthy = function(value: unknown, message?: string, parameters?: Message.Parameters): asserts value {
-    if (!value) {
-        assert.fail(message ?? `Assertion failure: value not truthy: ${JSON.stringify(value)}`, {value,...parameters,caller:assert.truthy});
-    }
 }
