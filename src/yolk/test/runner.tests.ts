@@ -17,18 +17,20 @@ describe("Runner", function() {
             ...Testing.findPath(this, "scripts/test-*.egg")
         ].forEach(script => it(`should accept '${script}'`, function() {
             const test = TestProgram.fromScript(this, script);
-            const expected = test.expectedException();
+            const match = test.input.match(/^\/\/\/<[A-Z]+><ERROR>(.*)$/m);
+            const expected = match?.[1];
             if (expected) {
                 try {
                     test.run();
                     expect.fail(undefined, expected, `Expected exception '${expected}', but none was thrown`);
                 }
-                catch (exception) {
-                    const actual = Exception.from(exception);
-                    if (actual) {
-                        expect(actual.format(false)).equals(expected);
+                catch (error) {
+                    const exception = Exception.from(error);
+                    if (exception) {
+                        const actual = exception.format(true).replace(test.source, "<RESOURCE>");
+                        expect(actual).equals(expected);
                     } else {
-                        throw actual;
+                        throw error;
                     }
                 }
             } else {

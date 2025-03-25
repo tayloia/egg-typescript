@@ -50,7 +50,7 @@ export class TestLogger extends Logger {
 }
 
 export class TestProgram extends TestLogger {
-    private constructor(private input: string, private source: string) {
+    private constructor(public input: string, public source: string) {
         super();
     }
     private entryToOutput(entry: Logger.Entry): string {
@@ -126,13 +126,6 @@ export class TestProgram extends TestLogger {
             console.log(actual);
             Testing.fail(`Extraneous script output: '${actual}'`, actual, undefined, makeStack(line));
         }
-    }
-    expectedException(): string {
-        const match = this.input.match(/^\/\/\/<[A-Z]+><ERROR>.*\): (.*)$/m);
-        if (match) {
-            return match[1];
-        }
-        return "";
     }
     static fromFile(path: fs.PathLike): TestProgram {
         return new TestProgram(fs.readFileSync(path, "utf8"), path.toString());
