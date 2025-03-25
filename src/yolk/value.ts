@@ -18,6 +18,31 @@ export function compareScalar<T>(lhs: T, rhs: T): Comparison {
 type BinaryInt = (lhs: bigint, rhs: bigint) => bigint;
 type BinaryFloat = (lhs: number, rhs: number) => number;
 
+function describeOperator(op: string) {
+    return {
+        "+": "addition",
+        "-": "subtraction",
+        "*": "multiplication",
+        "/": "division",
+        "%": "remainder",
+        "&": "bitwise-and",
+        "|": "bitwise-or",
+        "^": "bitwise-xor",
+        "<<": "left-shift",
+        ">>": "right-shift",
+        ">>>": "unsigned-shift",
+        "&&": "logical-and",
+        "||": "logical-or",
+        "?:": "ternary",
+        "==": "equality",
+        "!=": "inequality",
+        "<": "comparison",
+        "<=": "comparison",
+        ">=": "comparison",
+        ">": "comparison",
+    }[op] ?? assert.unreachable({op});
+}
+
 function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf: BinaryFloat): Value {
     switch (lhs.kind) {
         case Value.Kind.Int:
@@ -38,13 +63,13 @@ function binaryArithmetic(lhs: Value, op: string, rhs: Value, bi: BinaryInt, bf:
             break;
         default:
             throw new RuntimeException(
-                "Expected left-hand side of arithmetic operator '{op}' to be an 'int' or 'float', but instead got " + lhs.describe(),
-                {lhs, op, rhs}
+                `Expected left-hand side of ${describeOperator(op)} operator '{operator}' to be an 'int' or 'float', but instead got ${lhs.describe()}`,
+                { left: lhs, operator: op, right: rhs}
             );
     }
     throw new RuntimeException(
-        "Expected right-hand side of arithmetic operator '{op}' to be an 'int' or 'float', but instead got " + rhs.describe(),
-        {lhs, op, rhs}
+        `Expected right-hand side of ${describeOperator(op)} operator '{operator}' to be an 'int' or 'float', but instead got ${rhs.describe()}`,
+        { left: lhs, operator: op, right: rhs}
     );
 }
 
@@ -71,13 +96,13 @@ function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, c
             break;
         default:
             throw new RuntimeException(
-                "Expected left-hand side of comparison operator '{op}' to be an 'int' or 'float', but instead got " + lhs.describe(),
-                {lhs, op, rhs}
+                `Expected left-hand side of ${describeOperator(op)} operator '{operator}' to be an 'int' or 'float', but instead got ${lhs.describe()}`,
+                { left: lhs, operator: op, rhs}
             );
     }
     throw new RuntimeException(
-        "Expected right-hand side of comparison operator '{op}' to be an 'int' or 'float', but instead got " + rhs.describe(),
-        {lhs, op, rhs}
+        `Expected right-hand side of ${describeOperator(op)} operator '{operator}' to be an 'int' or 'float', but instead got ${rhs.describe()}`,
+        { left: lhs, operator: op, rhs }
     );
 }
 
@@ -227,7 +252,7 @@ export class Value {
             case "++":
             case "--":
                 if (this.kind !== Value.Kind.Int) {
-                    throw new RuntimeException("Operator '{op}' can only be applied to values of type 'int'", {op});
+                    throw new RuntimeException("Operator '{operator}' can only be applied to values of type 'int'", { operator: op });
                 }
                 return Value.fromInt(this.getInt().mutate(op));
         }
