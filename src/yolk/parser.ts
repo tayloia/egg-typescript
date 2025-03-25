@@ -95,6 +95,9 @@ class Node implements Parser.INode {
     static createIdentifier(location: Location, name: string): Node {
         return new Node(location, Parser.Kind.Identifier, [], Value.fromString(name));
     }
+    static createNamed(location: Location, key: string, value: Node): Node {
+        return new Node(location, Parser.Kind.Named, [value], Value.fromString(key));
+    }
     static createLiteralScalar(location: Location, value: Value): Node {
         return new Node(location, Parser.Kind.LiteralScalar, [], value);
     }
@@ -697,9 +700,17 @@ class Impl extends Logger {
         const nodes = [];
         if (this.peekPunctuation(lookahead) !== "}") {
             for (;;) {
-                const element = this.parseExpression(lookahead) ?? this.unexpected("Expected object element expression", lookahead);
-                nodes.push(element.node);
-                lookahead = element.lookahead;
+                const token = this.input.peek(lookahead);
+                if (token.kind !== Tokenizer.Kind.Identifier && token.kind != Tokenizer.Kind.String) {
+                    this.unexpected("Expected object element label", lookahead);
+                }
+                const key = String(token.value);
+                if (this.peekPunctuation(lookahead + 1) !== ":") {
+                    this.unexpected("Expected ':' after object element key", lookahead + 1, ":");
+                }
+                const value = this.parseExpression(lookahead + 2) ?? this.unexpected("Expected object element value expression", lookahead + 2);
+                nodes.push(Node.createNamed(this.peekLocation(token, value.lookahead), key, value.node));
+                lookahead = value.lookahead;
                 const punctuation = this.peekPunctuation(lookahead);
                 if (punctuation === ",") {
                     ++lookahead;
@@ -801,6 +812,7 @@ export namespace Parser {
     export enum Kind {
         Module = "module",
         Identifier = "identifier",
+        Named = "named",
         LiteralScalar = "literal-scalar",
         LiteralArray = "literal-array",
         LiteralObject = "literal-object",

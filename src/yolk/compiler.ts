@@ -162,6 +162,9 @@ class Impl extends Logger {
             case Parser.Kind.Identifier:
                 assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Compiler.Kind.ValueVariableGet, [], pnode.value);
+            case Parser.Kind.Named:
+                assert.eq(pnode.children.length, 1);
+                return new Node(pnode.location, Compiler.Kind.ValueNamed, [this.compileExpr(pnode.children[0])], pnode.value);
             case Parser.Kind.LiteralScalar:
                 assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Compiler.Kind.ValueScalar, [], pnode.value);
@@ -262,6 +265,7 @@ export namespace Compiler {
         TargetIndex = "target-index",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
+        ValueNamed = "value-named",
         ValueScalar = "value-scalar",
         ValueArray = "value-array",
         ValueObject = "value-object",

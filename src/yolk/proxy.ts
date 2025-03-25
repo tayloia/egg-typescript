@@ -58,6 +58,47 @@ abstract class ProxyBase implements Value.IProxy {
     }
 }
 
+class ProxyKeyValue extends ProxyBase {
+    constructor(private key: Value, private value: Value) {
+        super();
+    }
+    getProperty(property: string): Value {
+        if (property === "key") {
+            return this.key;
+        }
+        if (property === "value") {
+            return this.value;
+        }
+        throw new RuntimeException("Unknown property for key-value pair: '{property}'", {property});
+    }
+    getIterator(): () => Value {
+        let index = 0;
+        return () => {
+            switch (index) {
+                case 0:
+                    ++index;
+                    return Value.fromProxy(new ProxyKeyValue(Value.fromString("key"), this.key));
+                case 1:
+                    ++index;
+                    return Value.fromProxy(new ProxyKeyValue(Value.fromString("value"), this.value));
+            }
+            return Value.VOID;
+        };
+    }
+    toUnderlying(): unknown {
+        return this;
+    }
+    toString(): string {
+        const options: ToStringOptions = {
+            quoteString: "\"",
+        }
+        return `{key:${this.key.toString(options)},value:${this.value.toString(options)}}`;
+    }
+    describe(): string {
+        return "a key-value pair";
+    }
+}
+
 export class ProxyStringMethod extends ProxyBase {
     constructor(private method: string, public invoke: Program.Callsite) {
         super();
@@ -172,6 +213,16 @@ export class ProxyVanillaObject extends ProxyBase {
         }
         return Value.VOID;
     }
+    getIterator(): () => Value {
+        const snapshot = this.entries.chronological(kv => new ProxyKeyValue(kv.key, kv.value));
+        let index = 0;
+        return () => {
+            if (index < snapshot.length) {
+                return Value.fromProxy(snapshot[index++]);
+            }
+            return Value.VOID;
+        };
+    }
     toUnderlying(): unknown {
         return this.entries;
     }
@@ -179,7 +230,7 @@ export class ProxyVanillaObject extends ProxyBase {
         const options: ToStringOptions = {
             quoteString: "\"",
         }
-        return "{" + this.entries.unordered(kv => kv.key.toString() + ":" + kv.value.toString(options)).join(",") + "}";
+        return "{" + this.entries.chronological(kv => kv.key.toString() + ":" + kv.value.toString(options)).join(",") + "}";
     }
     describe(): string {
         return "a value of type 'object'";

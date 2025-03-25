@@ -34,11 +34,12 @@ export class ValueMap {
         }
         return undefined;
     }
-    unordered<T>(mapper: (kv: ValueMapPair) => T) {
+    chronological<T>(mapper: (kv: ValueMapPair) => T) {
         return [...this.entries.values()].map(mapper);
     }
-    reordered<T>(mapper: (kv: ValueMapPair) => T) {
-        return [...this.entries.values()].sort((a, b) => a.key.compare(b.key)).map(mapper);
+    ordered<T>(mapper: (kv: ValueMapPair) => T, order?: (a: ValueMapPair, b: ValueMapPair) => number) {
+        order ??= (a, b) => a.key.compare(b.key);
+        return [...this.entries.values()].sort(order).map(mapper);
     }
     static keyof(value: Value): ValueMapKey {
         switch (value.kind) {

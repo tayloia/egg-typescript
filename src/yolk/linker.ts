@@ -12,8 +12,12 @@ import { Type } from "./type";
 import { Value } from "./value";
 import { ValueMap } from "./valuemap";
 
-class KeyValue {
-    constructor(public readonly key: Value, public readonly value: Value) {}
+class ArrayInitializer {
+    constructor(public readonly value: Node, public readonly ellipsis: boolean) {}
+}
+
+class ObjectInitializer {
+    constructor(public readonly key: string, public readonly value: Node, public readonly ellipsis: boolean) {}
 }
 
 enum Flow {
@@ -40,9 +44,6 @@ abstract class Node {
     abstract evaluate(runner: Program.IRunner): Value;
     abstract execute(runner: Program.IRunner): Outcome;
     abstract modify(runner: Program.IRunner, op: string, expr: Node): Value;
-    keyvalue(runner: Program.IRunner): KeyValue {
-        return new KeyValue(Value.VOID, this.evaluate(runner));
-    }
     catch(error: unknown): never {
         const exception = Exception.from(error);
         if (exception) {
@@ -808,7 +809,7 @@ class Node_ValueScalar extends Node {
 }
 
 class Node_ValueArray extends Node {
-    constructor(location: Location, private nodes: Node[]) {
+    constructor(location: Location, private initializers: ArrayInitializer[]) {
         super(location);
     }
     resolve(resolver_: Program.IResolver): Type {
@@ -816,10 +817,11 @@ class Node_ValueArray extends Node {
     }
     evaluate(runner: Program.IRunner): Value {
         const elements = new Array<Value>();
-        for (const node of this.nodes) {
-            const kv = node.keyvalue(runner);
-            assert(kv.key.isVoid());
-            elements.push(kv.value);
+        for (const initializer of this.initializers) {
+            assert(!initializer.ellipsis);
+            const value = initializer.value.evaluate(runner);
+            assert(!value.isVoid());
+            elements.push(value);
         }
         return Value.fromVanillaArray(elements);
     }
@@ -832,7 +834,7 @@ class Node_ValueArray extends Node {
 }
 
 class Node_ValueObject extends Node {
-    constructor(location: Location, private nodes: Node[]) {
+    constructor(location: Location, private initializers: ObjectInitializer[]) {
         super(location);
     }
     resolve(resolver_: Program.IResolver): Type {
@@ -840,10 +842,12 @@ class Node_ValueObject extends Node {
     }
     evaluate(runner: Program.IRunner): Value {
         const elements = new ValueMap();
-        for (const node of this.nodes) {
-            const kv = node.keyvalue(runner);
-            assert(!kv.key.isVoid());
-            elements.set(kv.key, kv.value);
+        for (const initializer of this.initializers) {
+            assert(!initializer.ellipsis);
+            const key = Value.fromString(initializer.key);
+            const value = initializer.value.evaluate(runner);
+            assert(!value.isVoid());
+            elements.set(key, value);
         }
         return Value.fromVanillaObject(elements);
     }
@@ -972,9 +976,9 @@ class Impl implements Program.IResolver {
                 assert.eq(node.children.length, 0);
                 return new Node_ValueScalar(node.location, node.value);
             case Compiler.Kind.ValueArray:
-                return new Node_ValueArray(node.location, this.linkNodes(node.children));
+                return this.linkValueArray(node);
             case Compiler.Kind.ValueObject:
-                return new Node_ValueObject(node.location, this.linkNodes(node.children));
+                return this.linkValueObject(node);
             case Compiler.Kind.ValueCall:
                 assert.ge(node.children.length, 1);
                 return new Node_ValueCall(node.location, this.linkNodes(node.children));
@@ -1017,6 +1021,18 @@ class Impl implements Program.IResolver {
                 return new Node_TypeLiteral_Any(node.location);
         }
         assert.fail("Unknown keyword for Compiler.Kind.TypeKeyword in linkTypeKeyword: {keyword}", {keyword});
+    }
+    linkValueArray(node: Compiler.INode): Node {
+        return new Node_ValueArray(node.location, node.children.map(child => {
+            return new ArrayInitializer(this.linkNode(child), false);
+        }));
+    }
+    linkValueObject(node: Compiler.INode): Node {
+        return new Node_ValueObject(node.location, node.children.map(child => {
+            assert.eq(child.kind, Compiler.Kind.ValueNamed);
+            assert.eq(child.children.length, 1);
+            return new ObjectInitializer(child.value.asString(), this.linkNode(child.children[0]), false);
+        }));
     }
     linkValuePropertyGet(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.ValuePropertyGet);
