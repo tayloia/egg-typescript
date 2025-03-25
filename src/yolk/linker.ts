@@ -52,54 +52,25 @@ class Outcome {
 
 abstract class Node {
     constructor(public location: Location) {}
-    abstract resolve_(resolver: Program.Resolver): Type;
-    abstract evaluate_(runner: Program.Runner): Value;
-    abstract execute_(runner: Program.Runner): Outcome;
-    abstract modify_(runner: Program.Runner, op: string, expr: Node): Value;
-    resolve(resolver: Program.Resolver): Type {
-        try {
-            return this.resolve_(resolver);
-        }
-        catch (error) {
-            this.rethrow(error);
-        }
-    }
-    evaluate(runner: Program.Runner): Value {
-        try {
-            return this.evaluate_(runner);
-        }
-        catch (error) {
-            this.rethrow(error);
-        }
-    }
-    execute(runner: Program.Runner): Outcome {
-        try {
-            return this.execute_(runner);
-        }
-        catch (error) {
-            this.rethrow(error);
-        }
-    }
-    modify(runner: Program.Runner, op: string, expr: Node): Value {
-        try {
-            return this.modify_(runner, op, expr);
-        }
-        catch (error) {
-            this.rethrow(error);
-        }
-    }
+    abstract resolve(resolver: Program.Resolver): Type;
+    abstract evaluate(runner: Program.Runner): Value;
+    abstract execute(runner: Program.Runner): Outcome;
+    abstract modify(runner: Program.Runner, op: string, expr: Node): Value;
     keyvalue(runner: Program.Runner): KeyValue {
         return new KeyValue(Value.VOID, this.evaluate(runner));
     }
-    unimplemented(_: Program.Runner | Program.Resolver): never {
-        assert.fail("Unimplemented: {caller}", { caller: this.unimplemented });
-    }
-    rethrow(error: unknown): never {
+    catch(error: unknown): never {
         const exception = Exception.from(error);
         if (exception) {
             exception.parameters.location ??= this.location;
         }
         throw error;
+    }
+    raise(message: string, parameters?: Message.Parameters): never {
+        throw new RuntimeException(message, { location: this.location, ...parameters });
+    }
+    unimplemented(_: Program.Runner | Program.Resolver): never {
+        assert.fail("Unimplemented: {caller}", { caller: this.unimplemented });
     }
 }
 
@@ -107,13 +78,13 @@ class Node_Module extends Node {
     constructor(location: Location, public children: Node[]) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         for (const child of this.children) {
             const outcome = child.execute(runner);
             if (outcome.flow !== Flow.Through) {
@@ -122,7 +93,7 @@ class Node_Module extends Node {
         }
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -131,13 +102,13 @@ class Node_StmtBlock extends Node {
     constructor(location: Location, public children: Node[]) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         for (const child of this.children) {
             const outcome = child.execute(runner);
             if (outcome.flow !== Flow.Through) {
@@ -146,7 +117,7 @@ class Node_StmtBlock extends Node {
         }
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -155,26 +126,26 @@ class Node_StmtAssert extends Node {
     constructor(location: Location, public op: string, public children: Node[]) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         let lhs, rhs, passed;
         switch (this.children.length) {
             case 1:
                 if (this.op === "") {
                     passed = this.children[0].evaluate(runner).asBoolean();
                     if (!passed) {
-                        throw new RuntimeException("Assertion is untrue", { location: this.location });
+                        this.raise("Assertion is untrue");
                     }
                 } else {
                     rhs = this.children[0].evaluate(runner);
                     passed = Value.unary(this.op, rhs).asBoolean();
                     if (!passed) {
-                        throw new RuntimeException("Assertion is untrue: {op}{rhs}", { op: this.op, rhs });
+                        this.raise("Assertion is untrue: {op}{rhs}", { op: this.op, rhs });
                     }
                 }
                 return Outcome.THROUGH;
@@ -183,13 +154,13 @@ class Node_StmtAssert extends Node {
                 rhs = this.children[1].evaluate(runner);
                 passed = Value.binary(lhs, this.op, rhs).asBoolean();
                 if (!passed) {
-                    throw new RuntimeException("Assertion is untrue: {lhs} {op} {rhs}", { lhs, op: this.op, rhs });
+                    this.raise("Assertion is untrue: {lhs} {op} {rhs}", { lhs, op: this.op, rhs });
                 }
                 return Outcome.THROUGH;
         }
         assert.fail("Invalid number of assertion nodes: {nodes}", {nodes:this.children.length});
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -198,13 +169,13 @@ class Node_StmtCall extends Node {
     constructor(location: Location, public children: Node[]) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         const callee = this.children[0].evaluate(runner);
         const args = new FunctionArguments();
         for (let index = 1; index < this.children.length; ++index) {
@@ -216,7 +187,7 @@ class Node_StmtCall extends Node {
         }
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -225,18 +196,23 @@ class Node_StmtVariableDefine extends Node {
     constructor(location: Location, public identifier: string, public type: Type, public initializer: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         const initializer = this.initializer.evaluate(runner);
-        runner.symbolAdd(this.identifier, SymbolFlavour.Variable, this.type, initializer);
+        try {
+            runner.symbolAdd(this.identifier, SymbolFlavour.Variable, this.type, initializer);
+        }
+        catch (error) {
+            this.catch(error);
+        }
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -245,20 +221,25 @@ class Node_StmtFunctionDefine extends Node {
     constructor(location: Location, public signature: FunctionSignature, public block: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         const definition = new FunctionDefinition(this.signature, (runner, args) => {
             runner.scopePush();
             try {
                 let index = 0;
                 for (const argument of args.arguments) {
                     const parameter = this.signature.parameters[index++];
-                    runner.symbolAdd(parameter.name, SymbolFlavour.Argument, parameter.type, argument);
+                    try {
+                        runner.symbolAdd(parameter.name, SymbolFlavour.Argument, parameter.type, argument);
+                    }
+                    catch (error) {
+                        this.catch(error);
+                    }
                 }
                 const outcome = this.block.execute(runner);
                 assert(outcome.flow === Flow.Through || outcome.flow === Flow.Return);
@@ -271,7 +252,7 @@ class Node_StmtFunctionDefine extends Node {
         runner.symbolAdd(this.signature.name, SymbolFlavour.Function, definition.type, Value.fromVanillaFunction(definition));
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -280,17 +261,17 @@ class Node_StmtAssign extends Node {
     constructor(location: Location, public target: Node, public expr: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.target.modify(runner, "", this.expr);
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -299,17 +280,17 @@ class Node_StmtMutate extends Node {
     constructor(location: Location, public op: string, public target: Node, public expr: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.target.modify(runner, this.op, this.expr);
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -318,17 +299,17 @@ class Node_StmtNudge extends Node {
     constructor(location: Location, public op: string, public target: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.target.modify(runner, this.op, this.target);
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -337,13 +318,13 @@ class Node_StmtForeach extends Node {
     constructor(location: Location, public identifier: string, public type: Type, public expr: Node, public block: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         const expr = this.expr.evaluate(runner);
         assert.eq(expr.kind, Value.Kind.String);
         runner.symbolAdd(this.identifier, SymbolFlavour.Variable, this.type, Value.VOID);
@@ -360,7 +341,7 @@ class Node_StmtForeach extends Node {
         }
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -369,13 +350,13 @@ class Node_StmtForloop extends Node {
     constructor(location: Location, public initialization: Node, public condition: Node, public advance: Node, public block: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         let outcome = this.initialization.execute(runner);
         assert.eq(outcome.flow, Flow.Through);
         for (;;) {
@@ -395,7 +376,7 @@ class Node_StmtForloop extends Node {
         }
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -404,20 +385,20 @@ class Node_StmtIf extends Node {
     constructor(location: Location, public condition: Node, public block: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         const condition = this.condition.evaluate(runner);
         if (condition.asBoolean()) {
             return this.block.execute(runner);
         }
         return Outcome.THROUGH;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -426,20 +407,20 @@ class Node_StmtReturn extends Node {
     constructor(location: Location, public expr: Node | undefined) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         if (this.expr === undefined) {
             return Outcome.RETURN;
         }
         const retval = this.expr.evaluate(runner);
         return Outcome.fromReturn(retval);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -448,20 +429,20 @@ class Node_StmtTry extends Node {
     constructor(location: Location, public tryBlock: Node, public catchClauses: Node[], public finallyClause?: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         let outcome: Outcome;
         try {
             outcome = this.tryBlock.execute(runner);
         }
         catch (error) {
             const exception = Exception.from(error);
-            if (exception) {
+            if (exception && exception.origin === Exception.Origin.Runtime) {
                 for (const clause of this.catchClauses) {
                     outcome = clause.execute(runner);
                     switch (outcome.flow) {
@@ -480,7 +461,7 @@ class Node_StmtTry extends Node {
                     }
                 }
             }
-            throw error;
+            this.catch(error);
         }
         finally {
             if (this.finallyClause) {
@@ -491,7 +472,7 @@ class Node_StmtTry extends Node {
         assert(outcome.flow === Flow.Through || outcome.flow === Flow.Return);
         return outcome;
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -500,13 +481,13 @@ class Node_StmtCatch extends Node {
     constructor(location: Location, public identifier: string, public type: Node, public block: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         const type = this.type.resolve(runner);
         const exception = type.compatible(runner.thrown);
         if (exception.isVoid()) {
@@ -523,7 +504,7 @@ class Node_StmtCatch extends Node {
             runner.scopePop();
         }
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -532,16 +513,16 @@ class Node_ValueVariableGet extends Node {
     constructor(location: Location, public identifier: string) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         return resolver.resolveIdentifier(this.identifier);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         return runner.symbolGet(this.identifier);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -550,10 +531,10 @@ class Node_ValuePropertyGet extends Node {
     constructor(location: Location, public instance: Node, public property: string) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         const value = this.instance.evaluate(runner);
         if (value.kind === Value.Kind.String) {
             const unicode = value.getUnicode();
@@ -564,17 +545,17 @@ class Node_ValuePropertyGet extends Node {
             if (proxy) {
                 return Value.fromProxy(proxy);
             }
-            throw new RuntimeException("Unknown property for 'string': '{property}'", { property: this.property });
+            this.raise("Unknown property for 'string': '{property}'", { property: this.property });
         }
         if (value.kind === Value.Kind.Proxy) {
             return value.getProxy().getProperty(this.property);
         }
         assert.fail(`Cannot get property for ${value.kind}`);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -583,17 +564,17 @@ class Node_ValueIndexGet extends Node {
     constructor(location: Location, public instance: Node, public index: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         const value = this.instance.evaluate(runner);
         if (value.kind === Value.Kind.String) {
             const index = this.index.evaluate(runner).getInt();
             const unicode = value.getUnicode();
             const char = unicode.at(index.toBigint());
             if (!char) {
-                throw new RuntimeException("String index {index} is out of range for a string of length {length}", { index, length: unicode.length });
+                this.raise("String index {index} is out of range for a string of length {length}", { index, length: unicode.length });
             }
             return Value.fromString(char);
         }
@@ -604,10 +585,10 @@ class Node_ValueIndexGet extends Node {
         }
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -616,13 +597,13 @@ abstract class Node_TypeLiteral extends Node {
     constructor(location: Location) {
         super(location);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -631,7 +612,7 @@ class Node_TypeLiteral_Void extends Node_TypeLiteral {
     constructor(location: Location) {
         super(location);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         return Type.VOID;
     }
 }
@@ -640,7 +621,7 @@ class Node_TypeLiteral_Bool extends Node_TypeLiteral {
     constructor(location: Location) {
         super(location);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         return Type.BOOL;
     }
 }
@@ -649,7 +630,7 @@ class Node_TypeLiteral_Int extends Node_TypeLiteral {
     constructor(location: Location) {
         super(location);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         return Type.INT;
     }
 }
@@ -658,7 +639,7 @@ class Node_TypeLiteral_Float extends Node_TypeLiteral {
     constructor(location: Location) {
         super(location);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         return Type.FLOAT;
     }
 }
@@ -667,10 +648,10 @@ class Node_TypeLiteral_String extends Node_TypeLiteral {
     constructor(location: Location) {
         super(location);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         return Value.fromProxy(runner.manifestations.STRING);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         return Type.STRING;
     }
 }
@@ -679,10 +660,10 @@ class Node_TypeLiteral_Object extends Node_TypeLiteral {
     constructor(location: Location) {
         super(location);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         return Value.fromProxy(runner.manifestations.OBJECT);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         return Type.OBJECT;
     }
 }
@@ -691,7 +672,7 @@ class Node_TypeLiteral_Any extends Node_TypeLiteral {
     constructor(location: Location) {
         super(location);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         return Type.ANY;
     }
 }
@@ -700,16 +681,16 @@ class Node_TargetVariable extends Node {
     constructor(location: Location, public identifier: string) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op: string, expr: Node): Value {
+    modify(runner: Program.Runner, op: string, expr: Node): Value {
         if (op === "") {
             runner.symbolSet(this.identifier, expr.evaluate(runner));
             return Value.VOID;
@@ -722,20 +703,20 @@ class Node_TargetProperty extends Node {
     constructor(location: Location, public instance: Node, public property: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op: string, expr: Node): Value {
+    modify(runner: Program.Runner, op: string, expr: Node): Value {
         const instance = this.instance.evaluate(runner);
         if (instance.kind === Value.Kind.String) {
             const property = this.property.evaluate(runner).asString();
-            throw new RuntimeException("Values of type 'string' do not support modification of property '{property}'", { property });
+            this.raise("Values of type 'string' do not support modification of property '{property}'", { property });
         }
         if (instance.kind === Value.Kind.Proxy) {
             const property = this.property.evaluate(runner).asString();
@@ -753,16 +734,16 @@ class Node_TargetIndex extends Node {
     constructor(location: Location, public instance: Node, public index: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         this.unimplemented(runner);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op: string, expr: Node): Value {
+    modify(runner: Program.Runner, op: string, expr: Node): Value {
         const instance = this.instance.evaluate(runner);
         if (instance.kind === Value.Kind.Proxy) {
             const index = this.index.evaluate(runner);
@@ -780,7 +761,7 @@ class Node_ValueScalar extends Node {
     constructor(location: Location, private value: Value) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         switch (this.value.kind) {
             case Value.Kind.Null:
                 return Type.NULL;
@@ -795,13 +776,13 @@ class Node_ValueScalar extends Node {
         }
         this.unimplemented(resolver);
     }
-    evaluate_(runner_: Program.Runner): Value {
+    evaluate(runner_: Program.Runner): Value {
         return this.value;
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -810,10 +791,10 @@ class Node_ValueArray extends Node {
     constructor(location: Location, private nodes: Node[]) {
         super(location);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         return Type.OBJECT;
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         const elements = new Array<Value>();
         for (const node of this.nodes) {
             const kv = node.keyvalue(runner);
@@ -822,10 +803,10 @@ class Node_ValueArray extends Node {
         }
         return Value.fromVanillaArray(elements);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -834,10 +815,10 @@ class Node_ValueObject extends Node {
     constructor(location: Location, private nodes: Node[]) {
         super(location);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         return Type.OBJECT;
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         const elements = new ValueMap();
         for (const node of this.nodes) {
             const kv = node.keyvalue(runner);
@@ -846,10 +827,10 @@ class Node_ValueObject extends Node {
         }
         return Value.fromVanillaObject(elements);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -858,11 +839,11 @@ class Node_ValueCall extends Node {
     constructor(location: Location, public children: Node[]) {
         super(location);
     }
-    resolve_(resolver_: Program.Resolver): Type {
+    resolve(resolver_: Program.Resolver): Type {
         // TODO
         return Type.STRING;
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         const callee = this.children[0].evaluate(runner);
         const args = new FunctionArguments();
         for (let arg = 1; arg < this.children.length; ++arg) {
@@ -870,10 +851,10 @@ class Node_ValueCall extends Node {
         }
         return callee.invoke(runner, args);
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
@@ -882,18 +863,23 @@ class Node_ValueOperatorBinary extends Node {
     constructor(location: Location, public lhs: Node, public op: string, public rhs: Node) {
         super(location);
     }
-    resolve_(resolver: Program.Resolver): Type {
+    resolve(resolver: Program.Resolver): Type {
         this.unimplemented(resolver);
     }
-    evaluate_(runner: Program.Runner): Value {
+    evaluate(runner: Program.Runner): Value {
         const lhs = this.lhs.evaluate(runner);
         const rhs = this.rhs.evaluate(runner);
-        return Value.binary(lhs, this.op, rhs);
+        try {
+            return Value.binary(lhs, this.op, rhs);
+        }
+        catch (error) {
+            this.catch(error);
+        }
     }
-    execute_(runner: Program.Runner): Outcome {
+    execute(runner: Program.Runner): Outcome {
         this.unimplemented(runner);
     }
-    modify_(runner: Program.Runner, op_: string, expr_: Node): Value {
+    modify(runner: Program.Runner, op_: string, expr_: Node): Value {
         this.unimplemented(runner);
     }
 }
