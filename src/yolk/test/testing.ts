@@ -73,10 +73,10 @@ export class TestProgram extends TestLogger {
     get output(): string {
         return this.logged.map(entry => this.entryToOutput(entry)).join("\n");
     }
-    parse(): Parser.Node {
+    parse(): Parser.INode {
         return Parser.fromString(this.input, this.source).withLogger(this).parse();
     }
-    compile(): Compiler.Module {
+    compile(): Compiler.IModule {
         return Compiler.fromString(this.input, this.source).withLogger(this).compile();
     }
     link(): Program {

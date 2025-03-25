@@ -52,7 +52,7 @@ function isIdentifierStart(codepoint: number): boolean {
     return (codepoint >= 0x0041 && codepoint <= 0x005A) || (codepoint >= 0x0061 && codepoint <= 0x007A) || (codepoint === 0x005F);
 }
 
-class InputFile implements Tokenizer.Input {
+class InputFile implements Tokenizer.IInput {
     private input: string;
     constructor(path: fs.PathLike, private offset: number = 0) {
         this.input = fs.readFileSync(path, "utf8");
@@ -68,7 +68,7 @@ class InputFile implements Tokenizer.Input {
     }
 }
 
-class InputString implements Tokenizer.Input {
+class InputString implements Tokenizer.IInput {
     constructor(private input: string, private offset: number = 0) {}
     source?: string;
     take(): number {
@@ -85,7 +85,7 @@ class Codepoint {
 }
 
 class Peeker {
-    constructor(public input: Tokenizer.Input) {}
+    constructor(public input: Tokenizer.IInput) {}
     private previous: number = -1;
     private line: number = 1;
     private column: number = 1;
@@ -394,7 +394,7 @@ export namespace Tokenizer {
             public readonly column: number,
         ) {}
     }
-    export interface Input {
+    export interface IInput {
         readonly source?: string;
         take(): number;
     }

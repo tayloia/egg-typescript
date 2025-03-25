@@ -1,7 +1,11 @@
 import { Exception } from "./exception";
 import { Message } from "./message";
 
-export abstract class Logger {
+export interface ILogger {
+    log(entry: Logger.Entry): void;
+}
+
+export abstract class Logger implements ILogger {
     abstract log(entry: Logger.Entry): void;
     trap(error: unknown) {
         const exception = Exception.from(error);
@@ -13,22 +17,22 @@ export abstract class Logger {
         return error;
     }
     error(message: string, parameters?: Message.Parameters) {
-        this.log(new Logger.Entry(Logger.Severity.Error, message, parameters));
+        this.log(Logger.Entry.error(message, parameters));
     }
     warning(message: string, parameters?: Message.Parameters) {
-        this.log(new Logger.Entry(Logger.Severity.Warning, message, parameters));
+        this.log(Logger.Entry.warning(message, parameters));
     }
     info(message: string, parameters?: Message.Parameters) {
-        this.log(new Logger.Entry(Logger.Severity.Info, message, parameters));
+        this.log(Logger.Entry.info(message, parameters));
     }
     debug(message: string, parameters?: Message.Parameters) {
-        this.log(new Logger.Entry(Logger.Severity.Debug, message, parameters));
+        this.log(Logger.Entry.debug(message, parameters));
     }
     trace(message: string, parameters?: Message.Parameters) {
-        this.log(new Logger.Entry(Logger.Severity.Trace, message, parameters));
+        this.log(Logger.Entry.trace(message, parameters));
     }
     print(message: string, parameters?: Message.Parameters) {
-        this.log(new Logger.Entry(Logger.Severity.Print, message, parameters));
+        this.log(Logger.Entry.print(message, parameters));
     }
 }
 
@@ -39,6 +43,24 @@ export namespace Logger {
     export class Entry extends Message {
         constructor(public severity: Logger.Severity, message: string, parameters?: Message.Parameters) {
             super(message, { ...parameters });
+        }
+        static error(message: string, parameters?: Message.Parameters) {
+            return new Entry(Logger.Severity.Error, message, parameters);
+        }
+        static warning(message: string, parameters?: Message.Parameters) {
+            return new Entry(Logger.Severity.Warning, message, parameters);
+        }
+        static info(message: string, parameters?: Message.Parameters) {
+            return new Entry(Logger.Severity.Info, message, parameters);
+        }
+        static debug(message: string, parameters?: Message.Parameters) {
+            return new Entry(Logger.Severity.Debug, message, parameters);
+        }
+        static trace(message: string, parameters?: Message.Parameters) {
+            return new Entry(Logger.Severity.Trace, message, parameters);
+        }
+        static print(message: string, parameters?: Message.Parameters) {
+            return new Entry(Logger.Severity.Print, message, parameters);
         }
     }
 }

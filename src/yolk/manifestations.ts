@@ -5,20 +5,20 @@ import { Program } from "./program";
 import { ToStringOptions, Value } from "./value";
 
 export abstract class Manifestations {
-    abstract readonly STRING: Value.Proxy;
-    abstract readonly OBJECT: Value.Proxy;
+    abstract readonly STRING: Value.IProxy;
+    abstract readonly OBJECT: Value.IProxy;
     static createDefault(): Manifestations {
         return new ManifestationsImpl();
     }
 }
 
 class ManifestationsImpl implements Manifestations {
-    STRING: Value.Proxy = new ManifestationString();
-    OBJECT: Value.Proxy = new ManifestationObject();
+    STRING: Value.IProxy = new ManifestationString();
+    OBJECT: Value.IProxy = new ManifestationObject();
 }
 
-class ManifestationBase implements Value.Proxy {
-    constructor(public name: string, public proxies?: Map<string, Value.Proxy>) {}
+class ManifestationBase implements Value.IProxy {
+    constructor(public name: string, public proxies?: Map<string, Value.IProxy>) {}
     getProperty(property: string): Value {
         const found = this.proxies?.get(property);
         if (found) {
@@ -47,7 +47,10 @@ class ManifestationBase implements Value.Proxy {
     delIndex(index_: Value): Value {
         this.unimplemented();
     }
-    invoke(runner_: Program.Runner, args_: FunctionArguments): Value {
+    getIterator(): () => Value {
+        this.unimplemented();
+    }
+    invoke(runner_: Program.IRunner, args_: FunctionArguments): Value {
         this.unimplemented();
     }
     toUnderlying(): unknown {
@@ -72,7 +75,7 @@ class ManifestationString extends ManifestationBase {
         super("string", new Map([
         ]));
     }
-    invoke(runner_: Program.Runner, args: FunctionArguments): Value {
+    invoke(runner_: Program.IRunner, args: FunctionArguments): Value {
         const text = args.arguments.map(arg => arg.toString()).join("");
         return Value.fromString(text);
     }
@@ -119,7 +122,7 @@ class ManifestationObjectPropertyDel extends ManifestationBase {
     constructor() {
         super("object.property.del");
     }
-    invoke(runner_: Program.Runner, args: FunctionArguments): Value {
+    invoke(runner_: Program.IRunner, args: FunctionArguments): Value {
         args.expect(2);
         const proxy = args.expectProxy(0);
         const property = args.expectString(1);

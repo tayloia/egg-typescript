@@ -2,14 +2,14 @@ import { assert } from "./assertion";
 import { Builtins } from "./builtins";
 import { RuntimeException } from "./exception";
 import { FunctionArguments } from "./function";
-import { Logger } from "./logger";
+import { ILogger, Logger } from "./logger";
 import { Manifestations } from "./manifestations";
 import { SymbolFlavour, SymbolTable } from "./symboltable";
 import { Type } from "./type";
 import { Value } from "./value";
 
 export class Program {
-    constructor(public readonly modules: Program.Module[]) {}
+    constructor(public readonly modules: Program.IModule[]) {}
     run(logger: Logger): void {
         const runner = new Runner(this, logger);
         runner.run();
@@ -17,32 +17,31 @@ export class Program {
 }
 
 export namespace Program {
-    export type Callsite = (runner: Runner, args: FunctionArguments) => Value;
-    export abstract class Resolver extends Logger {
-        abstract resolveIdentifier(identifier: string): Type;
+    export type Callsite = (runner: IRunner, args: FunctionArguments) => Value;
+    export interface IResolver extends ILogger {
+        resolveIdentifier(identifier: string): Type;
     }
-    export abstract class Runner extends Resolver {
-        abstract manifestations: Manifestations;
-        abstract caught: Value;
-        abstract scopePush(): void;
-        abstract scopePop(): void;
-        abstract symbolAdd(symbol: string, flavour: SymbolFlavour, type: Type, value: Value): void;
-        abstract symbolGet(symbol: string): Value;
-        abstract symbolSet(symbol: string, value: Value): void;
-        abstract symbolMut(symbol: string, op: string, lazy: () => Value): Value;
+    export interface IRunner extends IResolver {
+        readonly manifestations: Manifestations;
+        caught: Value;
+        scopePush(): void;
+        scopePop(): void;
+        symbolAdd(symbol: string, flavour: SymbolFlavour, type: Type, value: Value): void;
+        symbolGet(symbol: string): Value;
+        symbolSet(symbol: string, value: Value): void;
+        symbolMut(symbol: string, op: string, lazy: () => Value): Value;
     }
-    export interface Node {
-        execute(runner: Runner): void;
+    export interface INode {
+        execute(runner: IRunner): void;
     }
-    export interface Module {
-        root: Node;
+    export interface IModule {
+        root: INode;
         get source(): string;
     }
 }
 
-class Runner extends Program.Runner {
+class Runner implements Program.IRunner {
     constructor(public program: Program, public logger: Logger) {
-        super();
         this.symbols = new SymbolTable();
         const print = new Builtins.Print();
         this.symbols.add("print", SymbolFlavour.Builtin, print.type, print.value);
@@ -78,10 +77,10 @@ class Runner extends Program.Runner {
         } else {
             const compatible = type.compatible(value);
             if (compatible.isVoid()) {
-                throw new RuntimeException("Cannot initialize '{symbol}' of type '{dsttype}' with {srctype}", {
+                throw new RuntimeException(`Cannot initialize '{symbol}' of type '{type}' with ${value.describe()}`, {
                     symbol,
-                    dsttype: type.describe(),
-                    srctype:value.describe()
+                    type: type.describe(),
+                    value: value,
                 });
             }
             this.symbols.add(symbol, flavour, type, compatible);
@@ -101,9 +100,10 @@ class Runner extends Program.Runner {
         }
         const compatible = entry.type.compatible(value);
         if (compatible.isVoid()) {
-            throw new RuntimeException("Cannot assign value of type '{type}' to variable '{symbol}'", {
+            throw new RuntimeException(`Cannot assign ${value.describe()} to variable '{symbol}' of type '{type}'`, {
                 symbol,
-                type: entry.type.describe()
+                type: entry.type.describe(),
+                value: value,
             });
         }
         entry.value = compatible;

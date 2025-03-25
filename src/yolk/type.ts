@@ -90,4 +90,5 @@ export namespace Type {
     export const STRING = new Type(new Set([Type.Primitive.String]));
     export const OBJECT = new Type(new Set([Type.Primitive.Object]));
     export const ANY = new Type(new Set([Type.Primitive.Bool, Type.Primitive.Int, Type.Primitive.Float, Type.Primitive.String, Type.Primitive.Object]));
+    export const ANYQ = new Type(new Set([Type.Primitive.Null, Type.Primitive.Bool, Type.Primitive.Int, Type.Primitive.Float, Type.Primitive.String, Type.Primitive.Object]));
 }

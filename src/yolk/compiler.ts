@@ -4,11 +4,11 @@ import { Location } from "./location";
 import { Parser } from "./parser";
 import { Value } from "./value";
 
-class Node implements Compiler.Node {
-    constructor(public location: Location, public kind: Compiler.Kind, public children: Compiler.Node[] = [], public value: Value = Value.VOID) {}
+class Node implements Compiler.INode {
+    constructor(public location: Location, public kind: Compiler.Kind, public children: Compiler.INode[] = [], public value: Value = Value.VOID) {}
 }
 
-class Module implements Compiler.Module {
+class Module implements Compiler.IModule {
     constructor(public readonly root: Node) {}
     get source(): string {
         return this.root.location.source;
@@ -16,7 +16,7 @@ class Module implements Compiler.Module {
 }
 
 class Impl extends Logger {
-    constructor(public input: Parser.Node, public logger: Logger) {
+    constructor(public input: Parser.INode, public logger: Logger) {
         super();
     }
     compileModule(): Module {
@@ -24,7 +24,7 @@ class Impl extends Logger {
         const root = new Node(this.input.location, Compiler.Kind.Module, stmts);
         return new Module(root);
     }
-    compileStmt(pnode: Parser.Node): Node {
+    compileStmt(pnode: Parser.INode): Node {
         switch (pnode.kind) {
             case Parser.Kind.Variable:
                 if (pnode.children.length === 1) {
@@ -83,16 +83,16 @@ class Impl extends Logger {
         }
         assert.fail("Unknown node kind in compileStmt: {kind}", {kind:pnode.kind});
     }
-    compileStmtFunctionParameters(parameters: Parser.Node): Node {
+    compileStmtFunctionParameters(parameters: Parser.INode): Node {
         assert.eq(parameters.kind, Parser.Kind.FunctionParameters);
         return new Node(parameters.location, Compiler.Kind.FunctionParameters, parameters.children.map(child => this.compileStmtFunctionParameter(child)), parameters.value);
     }
-    compileStmtFunctionParameter(parameter: Parser.Node): Node {
+    compileStmtFunctionParameter(parameter: Parser.INode): Node {
         assert.eq(parameter.kind, Parser.Kind.FunctionParameter);
         assert.eq(parameter.children.length, 1);
         return new Node(parameter.location, Compiler.Kind.FunctionParameter, [this.compileType(parameter.children[0])], parameter.value);
     }
-    compileStmtFunctionCall(callee: Parser.Node, args: Parser.Node): Node {
+    compileStmtFunctionCall(callee: Parser.INode, args: Parser.INode): Node {
         if (callee.kind === Parser.Kind.Identifier && callee.value.asString() === "assert") {
             assert.eq(args.kind, Parser.Kind.FunctionArguments);
             assert.eq(args.children.length, 1);
@@ -102,7 +102,7 @@ class Impl extends Logger {
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Compiler.Kind.StmtCall, children);
     }
-    compileStmtAssert(assertion: Parser.Node): Node {
+    compileStmtAssert(assertion: Parser.INode): Node {
         if (assertion.kind === Parser.Kind.OperatorUnary) {
             assert.eq(assertion.children.length, 1);
             const children = [this.compileExpr(assertion.children[0])];
@@ -115,7 +115,7 @@ class Impl extends Logger {
         }
         return new Node(assertion.location, Compiler.Kind.StmtAssert, [this.compileExpr(assertion)]);
     }
-    compileStmtTry(location: Location, tryBlock: Parser.Node, catchClauses: Parser.Node[], finallyClause: Parser.Node | undefined): Node {
+    compileStmtTry(location: Location, tryBlock: Parser.INode, catchClauses: Parser.INode[], finallyClause: Parser.INode | undefined): Node {
         const children = [this.compileStmt(tryBlock)];
         for (const catchClause of catchClauses) {
             children.push(this.compileStmt(catchClause));
@@ -126,7 +126,7 @@ class Impl extends Logger {
         }
         return new Node(location, Compiler.Kind.StmtTry, children, Value.FALSE);
     }
-    compileType(pnode: Parser.Node): Node {
+    compileType(pnode: Parser.INode): Node {
         switch (pnode.kind) {
             case Parser.Kind.TypeInfer:
                 assert.eq(pnode.children.length, 0);
@@ -139,7 +139,7 @@ class Impl extends Logger {
         }
         assert.fail("Unknown node kind in compileType: {kind}", {kind:pnode.kind});
     }
-    compileTarget(pnode: Parser.Node): Node {
+    compileTarget(pnode: Parser.INode): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
                 assert.eq(pnode.children.length, 0);
@@ -153,11 +153,11 @@ class Impl extends Logger {
         }
         assert.fail("Unknown node kind in compileTarget: {kind}", {kind:pnode.kind});
     }
-    compilePropertyIdentifier(pnode: Parser.Node): Node {
+    compilePropertyIdentifier(pnode: Parser.INode): Node {
         assert.eq(pnode.kind, Parser.Kind.Identifier);
         return new Node(pnode.location, Compiler.Kind.ValueScalar, [], pnode.value);
     }
-    compileExpr(pnode: Parser.Node): Node {
+    compileExpr(pnode: Parser.INode): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
                 assert.eq(pnode.children.length, 0);
@@ -187,28 +187,28 @@ class Impl extends Logger {
         }
         assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
-    compileExprFunctionCall(callee: Parser.Node, args: Parser.Node): Node {
+    compileExprFunctionCall(callee: Parser.INode, args: Parser.INode): Node {
         const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Compiler.Kind.ValueCall, children);
     }
-    compileExprIndexGet(instance: Parser.Node, index: Parser.Node): Node {
+    compileExprIndexGet(instance: Parser.INode, index: Parser.INode): Node {
         const children = [this.compileExpr(instance), this.compileExpr(index)];
         const location = children[0].location.span(children[1].location);
         return new Node(location, Compiler.Kind.ValueIndexGet, children);
     }
-    compileExprPropertyGet(instance: Parser.Node, property: Parser.Node): Node {
+    compileExprPropertyGet(instance: Parser.INode, property: Parser.INode): Node {
         assert.eq(property.kind, Parser.Kind.Identifier);
         const children = [this.compileExpr(instance), this.compilePropertyIdentifier(property)];
         const location = children[0].location.span(children[1].location);
         return new Node(location, Compiler.Kind.ValuePropertyGet, children);
     }
-    compileExprBinary(plhs: Parser.Node, op: string, prhs: Parser.Node): Node {
+    compileExprBinary(plhs: Parser.INode, op: string, prhs: Parser.INode): Node {
         const children = [this.compileExpr(plhs), this.compileExpr(prhs)];
         const location = children[0].location.span(children[1].location);
         return new Node(location, Compiler.Kind.ValueOperatorBinary, children, Value.fromString(op));
     }
-    compileExprArguments(pnode: Parser.Node): Node[] {
+    compileExprArguments(pnode: Parser.INode): Node[] {
         assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
         return pnode.children.map(child => this.compileExpr(child));
     }
@@ -271,14 +271,14 @@ export namespace Compiler {
         ValueIndexGet = "value-index-get",
         ValueOperatorBinary = "value-operator-binary",
     }
-    export interface Node {
+    export interface INode {
         kind: Kind;
-        children: Node[];
+        children: INode[];
         value: Value;
         location: Location;
     }
-    export interface Module {
-        root: Node;
+    export interface IModule {
+        root: INode;
         readonly source: string;
     }
 }

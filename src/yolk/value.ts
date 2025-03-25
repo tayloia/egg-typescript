@@ -7,7 +7,7 @@ import { Program } from "./program";
 import { ValueMap } from "./valuemap";
 import { FunctionArguments, FunctionDefinition } from "./function";
 
-export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.Proxy;
+export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.IProxy;
 
 export type Comparison = -1 | 0 | 1;
 
@@ -124,9 +124,9 @@ export class Value {
         assert.eq(this.kind, Value.Kind.String);
         return this.underlying as Value.Unicode;
     }
-    getProxy(): Value.Proxy {
+    getProxy(): Value.IProxy {
         assert.eq(this.kind, Value.Kind.Proxy);
-        return this.underlying as Value.Proxy;
+        return this.underlying as Value.IProxy;
     }
     asBoolean(): boolean {
         return this.getBool().toBoolean();
@@ -233,7 +233,7 @@ export class Value {
         }
         assert.fail("Unknown mutating operator: '{op}'", {op, caller:this.mutate});
     }
-    invoke(runner: Program.Runner, args: FunctionArguments): Value {
+    invoke(runner: Program.IRunner, args: FunctionArguments): Value {
         if (this.kind !== Value.Kind.Proxy) {
             throw new RuntimeException("Function invocation '()' is not supported by " + this.describe());
         }
@@ -269,7 +269,7 @@ export class Value {
         }
         return new Value(value, Value.Kind.String);
     }
-    static fromProxy(value: Value.Proxy) {
+    static fromProxy(value: Value.IProxy) {
         return new Value(value, Value.Kind.Proxy);
     }
     static fromRuntimeException(exception: RuntimeException) {
@@ -561,7 +561,7 @@ export namespace Value {
             return new Value.Unicode(unicode);
         }
     }
-    export interface Proxy {
+    export interface IProxy {
         getProperty(property: string): Value;
         setProperty(property: string, value: Value): Value;
         mutProperty(property: string, op: string, lazy: () => Value): Value;
@@ -570,7 +570,8 @@ export namespace Value {
         setIndex(index: Value, value: Value): Value;
         mutIndex(index: Value, op: string, lazy: () => Value): Value;
         delIndex(index: Value): Value;
-        invoke(runner: Program.Runner, args: FunctionArguments): Value;
+        getIterator(): () => Value;
+        invoke(runner: Program.IRunner, args: FunctionArguments): Value;
         toUnderlying(): unknown;
         toDebug(): string;
         toString(options_?: ToStringOptions): string;

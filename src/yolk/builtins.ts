@@ -1,5 +1,6 @@
 import { FunctionArguments, FunctionDefinition, FunctionSignature } from "./function";
 import { Location } from "./location";
+import { Logger } from "./logger";
 import { Program } from "./program";
 import { ProxyStringMethod } from "./proxy";
 import { Type } from "./type";
@@ -13,9 +14,9 @@ export namespace Builtins {
         readonly definition = new FunctionDefinition(this.signature, this.invoke);
         readonly type = Type.OBJECT;
         readonly value = Value.fromVanillaFunction(this.definition);
-        private invoke(runner: Program.Runner, args: FunctionArguments): Value {
+        private invoke(runner: Program.IRunner, args: FunctionArguments): Value {
             const text = args.arguments.map(arg => arg.toString()).join("");
-            runner.print(text);
+            runner.log(Logger.Entry.print(text));
             return Value.VOID;
         }
     }
@@ -38,7 +39,7 @@ export namespace Builtins {
             ["startsWith", startsWith],
             ["toString", toString],
         ]);
-        export function queryProxy(instance: Value.Unicode, method: string): Value.Proxy | undefined {
+        export function queryProxy(instance: Value.Unicode, method: string): Value.IProxy | undefined {
             const handler = methods.get(method);
             if (handler) {
                 return new ProxyStringMethod(method, (runner_, args) => {
@@ -47,7 +48,7 @@ export namespace Builtins {
             }
             return undefined;
         }
-        export function concat(runner_: Program.Runner, args: FunctionArguments): Value {
+        export function concat(runner_: Program.IRunner, args: FunctionArguments): Value {
             return Value.fromString(args.arguments.map(arg => arg.toString()).join(""));
         }
         function compareTo(instance: Value.Unicode, args: FunctionArguments): Value {

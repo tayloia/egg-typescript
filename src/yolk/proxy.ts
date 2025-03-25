@@ -8,7 +8,7 @@ import { Message } from "./message";
 import { ValueMap } from "./valuemap";
 import { FunctionArguments, FunctionDefinition } from "./function";
 
-abstract class ProxyBase implements Value.Proxy {
+abstract class ProxyBase implements Value.IProxy {
     getProperty(property: string): Value {
         this.unsupported("Properties are", {property});
     }
@@ -33,7 +33,10 @@ abstract class ProxyBase implements Value.Proxy {
     delIndex(index: Value): Value {
         this.unsupported("Deletion by index is", {index});
     }
-    invoke(runner_: Program.Runner, args_: FunctionArguments): Value {
+    getIterator(): () => Value {
+        this.unsupported("Iteration is");
+    }
+    invoke(runner_: Program.IRunner, args_: FunctionArguments): Value {
         this.unsupported("Function invocation '()' is");
     }
     [inspect.custom]() {
@@ -112,6 +115,15 @@ export class ProxyVanillaArray extends ProxyBase {
         this.elements[index.asNumber()] = value;
         return Value.VOID;
     }
+    getIterator(): () => Value {
+        let index = 0;
+        return () => {
+            if (index < this.elements.length) {
+                return this.elements[index++];
+            }
+            return Value.VOID;
+        };
+    }
     toUnderlying(): unknown {
         return this.elements;
     }
@@ -178,7 +190,7 @@ export class ProxyVanillaFunction extends ProxyVanillaObject {
     constructor(private definition: FunctionDefinition, entries: ValueMap) {
         super(entries);
     }
-    invoke(runner: Program.Runner, args: FunctionArguments): Value {
+    invoke(runner: Program.IRunner, args: FunctionArguments): Value {
         return this.definition.invoke(runner, args);
     }
     toUnderlying(): unknown {

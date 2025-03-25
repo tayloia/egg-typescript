@@ -25,7 +25,7 @@ function binaryOperatorPrecedenceString(op: string) {
     return binaryOperatorPrecedences.get(op) ?? assert.fail("Unknown precedence for operator '{op}'", {op});
 }
 
-function binaryOperatorPrecedenceNode(pnode: Parser.Node) {
+function binaryOperatorPrecedenceNode(pnode: Parser.INode) {
     return (pnode.kind === Parser.Kind.OperatorBinary) ? binaryOperatorPrecedenceString(pnode.value.asString()) : 99;
 }
 
@@ -86,7 +86,7 @@ class Input {
     }
 }
 
-class Node implements Parser.Node {
+class Node implements Parser.INode {
     private constructor(public location: Location, public kind: Parser.Kind, public children: Node[] = [], public value: Value = Value.VOID) {}
     static createModule(source: string, children: Node[]): Node {
         const location = new Location(source, 0, 0);
@@ -778,7 +778,7 @@ export class Parser {
     private _logger?: Logger;
     constructor(public input: Input) {
     }
-    parse(): Parser.Node {
+    parse(): Parser.INode {
         const impl = new Impl(this.input, this.logger);
         return impl.expectModule();
     }
@@ -828,10 +828,10 @@ export namespace Parser {
         OperatorBinary = "operator-binary",
         OperatorUnary = "operator-unary",
     }
-    export interface Node {
+    export interface INode {
         location: Location;
         kind: Kind;
-        children: Node[];
+        children: INode[];
         value: Value;
     }
 }
