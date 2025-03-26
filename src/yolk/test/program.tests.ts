@@ -6,7 +6,7 @@ describe("Program", function() {
     describe("fromString", function() {
         it("should accept minimal program", function() {
             const test = TestProgram.fromString("print(\"hello, world\");");
-            const program = test.link();
+            const program = test.compile();
             expect(test.logged.length).equals(0);
             program.run(test);
             expect(test.logged.length).equals(1);

@@ -1,249 +1,364 @@
 import { assert } from "./assertion";
-import { Logger } from "./logger";
+import { Builtins } from "./builtins";
+import { Syntax } from "./syntax";
+import { Exception } from "./exception";
+import { FunctionParameter, FunctionSignature } from "./function";
 import { Location } from "./location";
-import { Parser } from "./parser";
+import { ConsoleLogger, Logger } from "./logger";
+import { Message } from "./message";
+import { Program } from "./program";
+import { Runtime } from "./runtime";
+import { SymbolFlavour, SymbolTable } from "./symboltable";
+import { Type } from "./type";
 import { Value } from "./value";
 
-class Node implements Compiler.INode {
-    constructor(public location: Location, public kind: Compiler.Kind, public children: Compiler.INode[] = [], public value: Value = Value.VOID) {}
+class Module implements Program.IModule {
+    constructor(public readonly root: Program.INode, public readonly source: string) {}
 }
 
-class Module implements Compiler.IModule {
-    constructor(public readonly root: Node) {}
-    get source(): string {
-        return this.root.location.source;
+class Impl implements Program.IResolver {
+    static readonly EMPTY = new Runtime.Node_Empty(new Location("(empty)", 0, 0));
+    constructor(public modules: Module[], public logger: Logger) {
+        this.symbols = new SymbolTable();
+        this.symbols.builtin(new Builtins.Print());
     }
-}
-
-class Impl extends Logger {
-    constructor(public input: Parser.INode, public logger: Logger) {
-        super();
+    symbols: SymbolTable;
+    compileProgram(): Program {
+        return new Program(this.modules);
     }
-    compileModule(): Module {
-        const stmts = this.input.children.map(child => this.compileStmt(child));
-        const root = new Node(this.input.location, Compiler.Kind.Module, stmts);
-        return new Module(root);
+    compileModule(module: Syntax.IModule): Module {
+        const root = this.compileNode(module.root);
+        return new Module(root, root.location.source);
     }
-    compileStmt(pnode: Parser.INode): Node {
-        switch (pnode.kind) {
-            case Parser.Kind.Variable:
-                if (pnode.children.length === 1) {
-                    return new Node(pnode.location, Compiler.Kind.StmtVariableDeclare, [this.compileType(pnode.children[0])], pnode.value)
-                }
-                assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Compiler.Kind.StmtVariableDefine, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
-            case Parser.Kind.Function:
-                assert.eq(pnode.children.length, 3);
-                return new Node(pnode.location, Compiler.Kind.StmtFunctionDefine, [this.compileType(pnode.children[0]), this.compileStmtFunctionParameters(pnode.children[1]), this.compileStmt(pnode.children[2])], pnode.value)
-            case Parser.Kind.FunctionCall:
-                assert.eq(pnode.children.length, 2);
-                return this.compileStmtFunctionCall(pnode.children[0], pnode.children[1]);
-            case Parser.Kind.StatementBlock:
-                return new Node(pnode.location, Compiler.Kind.StmtBlock, pnode.children.map(child => this.compileStmt(child)));
-            case Parser.Kind.StatementIf:
-                return this.compileStmtIf(pnode);
-            case Parser.Kind.StatementReturn:
-                assert.eq(pnode.children.length, 1);
-                return new Node(pnode.location, Compiler.Kind.StmtReturn, [this.compileExpr(pnode.children[0])]);
-            case Parser.Kind.StatementTry:
-                if (pnode.value.asBoolean()) {
-                    assert.ge(pnode.children.length, 2);
-                    return this.compileStmtTry(pnode.location, pnode.children[0], pnode.children.slice(1, -1), pnode.children[pnode.children.length - 1]);
-                }
-                assert.ge(pnode.children.length, 1);
-                return this.compileStmtTry(pnode.location, pnode.children[0], pnode.children.slice(1), undefined);
-            case Parser.Kind.StatementCatch:
-                assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Compiler.Kind.StmtCatch, [this.compileType(pnode.children[0]), this.compileStmt(pnode.children[1])], pnode.value);
-            case Parser.Kind.StatementAssign:
-                assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Compiler.Kind.StmtAssign, [this.compileTarget(pnode.location, pnode.children[0]), this.compileExpr(pnode.children[1])]);
-            case Parser.Kind.StatementMutate:
-                assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Compiler.Kind.StmtMutate, [this.compileTarget(pnode.location, pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value);
-            case Parser.Kind.StatementNudge:
-                assert.eq(pnode.children.length, 1);
-                return new Node(pnode.location, Compiler.Kind.StmtNudge, [this.compileTarget(pnode.location, pnode.children[0])], pnode.value);
-            case Parser.Kind.StatementForeach:
-                assert.eq(pnode.children.length, 3);
-                return new Node(pnode.location, Compiler.Kind.StmtForeach, [
-                    this.compileType(pnode.children[0]),
-                    this.compileExpr(pnode.children[1]),
-                    this.compileStmt(pnode.children[2]),
-                ], pnode.value);
-            case Parser.Kind.StatementForloop:
-                assert.eq(pnode.children.length, 4);
-                return new Node(pnode.location, Compiler.Kind.StmtForloop, [
-                    this.compileStmt(pnode.children[0]),
-                    this.compileExpr(pnode.children[1]),
-                    this.compileStmt(pnode.children[2]),
-                    this.compileStmt(pnode.children[3]),
-                ]);
+    compileNode(node: Syntax.INode): Runtime.Node {
+        switch (node.kind) {
+            case Syntax.Kind.Module:
+                return new Runtime.Node_Module(node.location, this.compileNodes(node.children));
+            case Syntax.Kind.StmtBlock:
+                return new Runtime.Node_StmtBlock(node.location, this.compileNodes(node.children));
+            case Syntax.Kind.StmtAssert:
+                assert.ge(node.children.length, 1);
+                return new Runtime.Node_StmtAssert(node.location, node.value.asString(), this.compileNodes(node.children));
+            case Syntax.Kind.StmtCall:
+                assert.ge(node.children.length, 1);
+                return new Runtime.Node_StmtCall(node.location, this.compileNodes(node.children));
+            case Syntax.Kind.StmtVariableDefine:
+                assert.eq(node.children.length, 2);
+                return this.compileStmtVariableDefine(node);
+            case Syntax.Kind.StmtFunctionDefine:
+                assert.eq(node.children.length, 3);
+                return this.compileStmtFunctionDefine(node);
+            case Syntax.Kind.StmtAssign:
+                assert.eq(node.children.length, 2);
+                return new Runtime.Node_StmtAssign(node.location, this.compileNode(node.children[0]), this.compileNode(node.children[1]));
+            case Syntax.Kind.StmtMutate:
+                assert.eq(node.children.length, 2);
+                return new Runtime.Node_StmtMutate(node.location, node.value.asString(), this.compileNode(node.children[0]), this.compileNode(node.children[1]));
+            case Syntax.Kind.StmtNudge:
+                assert.eq(node.children.length, 1);
+                return new Runtime.Node_StmtNudge(node.location, node.value.asString(), this.compileNode(node.children[0]));
+            case Syntax.Kind.StmtForeach:
+                assert.eq(node.children.length, 3);
+                return this.compileStmtForeach(node);
+            case Syntax.Kind.StmtForloop:
+                assert.eq(node.children.length, 4);
+                return this.compileStmtForloop(node);
+            case Syntax.Kind.StmtIf:
+                return this.compileStmtIf(node);
+            case Syntax.Kind.StmtIfGuard:
+                return this.compileStmtIfGuard(node);
+            case Syntax.Kind.StmtReturn:
+                return this.compileStmtReturn(node);
+            case Syntax.Kind.StmtTry:
+                return this.compileStmtTry(node);
+            case Syntax.Kind.TargetVariable:
+                return this.compileTargetVariable(node);
+            case Syntax.Kind.TargetProperty:
+                assert.eq(node.children.length, 2);
+                return new Runtime.Node_TargetProperty(node.location, this.compileNode(node.children[0]), this.compileNode(node.children[1]));
+            case Syntax.Kind.TargetIndex:
+                assert.eq(node.children.length, 2);
+                return new Runtime.Node_TargetIndex(node.location, this.compileNode(node.children[0]), this.compileNode(node.children[1]));
+            case Syntax.Kind.TypeKeyword:
+                assert.eq(node.children.length, 0);
+                return this.compileTypeKeyword(node);
+            case Syntax.Kind.TypeNullable:
+                assert.eq(node.children.length, 1);
+                return new Runtime.Node_TypeNullable(node.location, this.compileNode(node.children[0]));
+            case Syntax.Kind.ValueScalar:
+                assert.eq(node.children.length, 0);
+                return new Runtime.Node_ValueScalar(node.location, node.value);
+            case Syntax.Kind.ValueArray:
+                return this.compileValueArray(node);
+            case Syntax.Kind.ValueObject:
+                return this.compileValueObject(node);
+            case Syntax.Kind.ValueCall:
+                assert.ge(node.children.length, 1);
+                return new Runtime.Node_ValueCall(node.location, this.compileNodes(node.children));
+            case Syntax.Kind.ValueVariableGet:
+                assert.eq(node.children.length, 0);
+                return this.compileValueVariableGet(node);
+            case Syntax.Kind.ValuePropertyGet:
+                assert.ge(node.children.length, 2);
+                return this.compileValuePropertyGet(node);
+            case Syntax.Kind.ValueIndexGet:
+                assert.ge(node.children.length, 2);
+                return this.compileValueIndexGet(node);
+            case Syntax.Kind.ValueOperatorBinary:
+                assert.eq(node.children.length, 2);
+                return new Runtime.Node_ValueOperatorBinary(node.location, this.compileNode(node.children[0]), node.value.asString(), this.compileNode(node.children[1]));
+            case Syntax.Kind.ValueOperatorTernary:
+                assert.eq(node.children.length, 3);
+                return new Runtime.Node_ValueOperatorTernary(node.location, this.compileNode(node.children[0]), this.compileNode(node.children[1]), this.compileNode(node.children[2]));
         }
-        assert.fail("Unknown node kind in compileStmt: {kind}", {kind:pnode.kind});
+        assert.fail("Unknown node kind in compileNode: {kind}", {kind:node.kind});
     }
-    compileStmtFunctionParameters(parameters: Parser.INode): Node {
-        assert.eq(parameters.kind, Parser.Kind.FunctionParameters);
-        return new Node(parameters.location, Compiler.Kind.FunctionParameters, parameters.children.map(child => this.compileStmtFunctionParameter(child)), parameters.value);
+    compileNodes(nodes: Syntax.INode[]): Runtime.Node[] {
+        return nodes.map(node => this.compileNode(node));
     }
-    compileStmtFunctionParameter(parameter: Parser.INode): Node {
-        assert.eq(parameter.kind, Parser.Kind.FunctionParameter);
-        assert.eq(parameter.children.length, 1);
-        return new Node(parameter.location, Compiler.Kind.FunctionParameter, [this.compileType(parameter.children[0])], parameter.value);
-    }
-    compileStmtFunctionCall(callee: Parser.INode, args: Parser.INode): Node {
-        if (callee.kind === Parser.Kind.Identifier && callee.value.asString() === "assert") {
-            assert.eq(args.kind, Parser.Kind.FunctionArguments);
-            assert.eq(args.children.length, 1);
-            return this.compileStmtAssert(args.children[0]);
+    compileTypeKeyword(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.TypeKeyword);
+        assert.eq(node.children.length, 0);
+        const keyword = node.value.asString();
+        switch (keyword) {
+            case "void":
+                return new Runtime.Node_TypeLiteral_Void(node.location);
+            case "bool":
+                return new Runtime.Node_TypeLiteral_Bool(node.location);
+            case "int":
+                return new Runtime.Node_TypeLiteral_Int(node.location);
+            case "float":
+                return new Runtime.Node_TypeLiteral_Float(node.location);
+            case "string":
+                return new Runtime.Node_TypeLiteral_String(node.location);
+            case "object":
+                return new Runtime.Node_TypeLiteral_Object(node.location);
+            case "any":
+                return new Runtime.Node_TypeLiteral_Any(node.location);
         }
-        const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
-        const location = children[0].location.span(children[children.length - 1].location);
-        return new Node(location, Compiler.Kind.StmtCall, children);
+        assert.fail("Unknown keyword in compileTypeKeyword: {keyword}", {keyword});
     }
-    compileStmtAssert(assertion: Parser.INode): Node {
-        if (assertion.kind === Parser.Kind.OperatorUnary) {
-            assert.eq(assertion.children.length, 1);
-            const children = [this.compileExpr(assertion.children[0])];
-            return new Node(assertion.location, Compiler.Kind.StmtAssert, children, assertion.value);    
-        }
-        if (assertion.kind === Parser.Kind.OperatorBinary) {
-            assert.eq(assertion.children.length, 2);
-            const children = [this.compileExpr(assertion.children[0]), this.compileExpr(assertion.children[1])];
-            return new Node(assertion.location, Compiler.Kind.StmtAssert, children, assertion.value);    
-        }
-        return new Node(assertion.location, Compiler.Kind.StmtAssert, [this.compileExpr(assertion)]);
+    compileValueArray(node: Syntax.INode): Runtime.Node {
+        return new Runtime.Node_ValueArray(node.location, node.children.map(child => {
+            return new Runtime.ArrayInitializer(this.compileNode(child), false);
+        }));
     }
-    compileStmtIf(pnode: Parser.INode): Node {
-        assert.eq(pnode.kind, Parser.Kind.StatementIf);
-        assert.ge(pnode.children.length, 2);
-        assert.le(pnode.children.length, 3);
-        let node;
-        if (pnode.children[0].kind === Parser.Kind.Guard) {
-            const guard = pnode.children[0];
-            assert.eq(guard.children.length, 2);
-            node = new Node(pnode.location, Compiler.Kind.StmtIfGuard, [this.compileType(guard.children[0]), this.compileExpr(guard.children[1])], guard.value);
+    compileValueObject(node: Syntax.INode): Runtime.Node {
+        return new Runtime.Node_ValueObject(node.location, node.children.map(child => {
+            assert.eq(child.kind, Syntax.Kind.ValueNamed);
+            assert.eq(child.children.length, 1);
+            return new Runtime.ObjectInitializer(child.value.asString(), this.compileNode(child.children[0]), false);
+        }));
+    }
+    compileValueVariableGet(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.ValueVariableGet);
+        assert.eq(node.children.length, 0);
+        const identifier = node.value.asString();
+        const symbol = this.symbols.find(identifier);
+        if (symbol) {
+            return new Runtime.Node_ValueVariableGet(node.location, identifier);
+        }
+        throw new CompilerException(node.location, "Unknown identifier: '{identifier}'", { identifier });
+    }
+    compileValuePropertyGet(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.ValuePropertyGet);
+        assert.eq(node.children.length, 2);
+        assert.eq(node.children[1].kind, Syntax.Kind.ValueScalar);
+        const property = node.children[1].value.asString();
+        return new Runtime.Node_ValuePropertyGet(node.location, this.compileNode(node.children[0]), property);
+    }
+    compileValueIndexGet(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.ValueIndexGet);
+        assert.eq(node.children.length, 2);
+        return new Runtime.Node_ValueIndexGet(node.location, this.compileNode(node.children[0]), this.compileNode(node.children[1]));
+    }
+    compileStmtVariableDefine(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtVariableDefine);
+        assert.eq(node.children.length, 2);
+        const identifier = node.value.asString();
+        let type: Type;
+        let initializer: Runtime.Node;
+        if (node.children[0].kind === Syntax.Kind.TypeInfer) {
+            initializer = this.compileNode(node.children[1]);
+            type = initializer.resolve(this);
+            assert(!type.isEmpty());
+            if (node.children[0].value.getBool()) {
+                // Allow 'var?'
+                type = type.addPrimitive(Type.Primitive.Null);
+            } else {
+                // Disallow 'var?'
+                type = type.removePrimitive(Type.Primitive.Null);
+            }
         } else {
-            node = new Node(pnode.location, Compiler.Kind.StmtIf, [this.compileExpr(pnode.children[0])]);
+            type = this.compileNode(node.children[0]).resolve(this);
+            assert(!type.isEmpty());
+            initializer = this.compileNode(node.children[1]);
         }
-        node.children.push(this.compileStmt(pnode.children[1]));
-        if (pnode.children.length > 2) {
-            node.children.push(this.compileStmt(pnode.children[2]));
+        const itype = initializer.resolve(this);
+        assert(!type.isEmpty());
+        if (type.compatibleType(itype).isEmpty()) {
+            throw new CompilerException(initializer.location, `Cannot initialize variable '{identifier}' of type '${type.describe()}' with a value of type '${itype.describe()}'`, { identifier });
         }
-        return node;
+        this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
+        return new Runtime.Node_StmtVariableDefine(initializer.location, identifier, type, initializer);
     }
-    compileStmtTry(location: Location, tryBlock: Parser.INode, catchClauses: Parser.INode[], finallyClause: Parser.INode | undefined): Node {
-        const children = [this.compileStmt(tryBlock)];
-        for (const catchClause of catchClauses) {
-            children.push(this.compileStmt(catchClause));
+    compileStmtFunctionDefine(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtFunctionDefine);
+        assert.eq(node.children.length, 3);
+        const fname = node.value.asString();
+        const rettype = this.compileNode(node.children[0]).resolve(this);
+        assert(!rettype.isEmpty());
+        assert(node.children[1].kind === Syntax.Kind.FunctionParameters);
+        this.symbols.add(fname, SymbolFlavour.Function, Type.OBJECT, Value.VOID);
+        this.symbols.push();
+        try {
+            const parameters = node.children[1].children.map(parameter => {
+                assert.eq(parameter.kind, Syntax.Kind.FunctionParameter);
+                assert.eq(parameter.children.length, 1);
+                const pname = parameter.value.asString();
+                const ptype = this.compileNode(parameter.children[0]).resolve(this);
+                assert(!ptype.isEmpty());
+                this.symbols.add(pname, SymbolFlavour.Argument, ptype, Value.VOID);
+                return new FunctionParameter(pname, ptype);
+            });
+            const signature = new FunctionSignature(fname, node.location, rettype, parameters);
+            const block = this.compileNode(node.children[2]);
+            return new Runtime.Node_StmtFunctionDefine(node.location, signature, block);
         }
-        if (finallyClause) {
-            children.push(this.compileStmt(finallyClause));
-            return new Node(location, Compiler.Kind.StmtTry, children, Value.TRUE);
+        finally {
+            this.symbols.pop();
         }
-        return new Node(location, Compiler.Kind.StmtTry, children, Value.FALSE);
     }
-    compileGuard(pnode: Parser.INode): Node {
-        assert.eq(pnode.children.length, 2);
-        return new Node(pnode.location, Compiler.Kind.StmtIfGuard, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
-    }
-    compileType(pnode: Parser.INode): Node {
-        switch (pnode.kind) {
-            case Parser.Kind.TypeInfer:
-                assert.eq(pnode.children.length, 0);
-                return new Node(pnode.location, Compiler.Kind.TypeInfer, [], pnode.value);
-            case Parser.Kind.TypeKeyword:
-                assert.eq(pnode.children.length, 0);
-                return new Node(pnode.location, Compiler.Kind.TypeKeyword, [], pnode.value);
-            case Parser.Kind.TypeNullable:
-                assert.eq(pnode.children.length, 1);
-                return new Node(pnode.location, Compiler.Kind.TypeNullable, [this.compileType(pnode.children[0])]);
+    compileStmtForeach(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtForeach);
+        assert.eq(node.children.length, 3);
+        let type, expr;
+        if (node.children[0].kind === Syntax.Kind.TypeInfer) {
+            expr = this.compileNode(node.children[1]);
+            const resolved = expr.resolve(this);
+            assert(!resolved.isEmpty());
+            const elements = resolved.getIterable();
+            if (elements === undefined) {
+                throw new CompilerException(expr.location, `Value of type '${resolved.describe()}' is not iterable in 'for' statement`);
+            }
+            if (node.children[0].value.getBool()) {
+                // Allow 'var?'
+                type = elements.addPrimitive(Type.Primitive.Null);
+            } else {
+                // Disallow 'var?'
+                type = elements.removePrimitive(Type.Primitive.Null);
+            }
+        } else {
+            type = this.compileNode(node.children[0]).resolve(this);
+            assert(!type.isEmpty());
+            expr = this.compileNode(node.children[1]);
         }
-        assert.fail("Unknown node kind in compileType: {kind}", {kind:pnode.kind});
-    }
-    compileTarget(location: Location, pnode: Parser.INode): Node {
-        switch (pnode.kind) {
-            case Parser.Kind.Identifier:
-                assert.eq(pnode.children.length, 0);
-                return new Node(location, Compiler.Kind.TargetVariable, [], pnode.value);
-            case Parser.Kind.PropertyAccess:
-                assert.eq(pnode.children.length, 2);
-                return new Node(location, Compiler.Kind.TargetProperty, [this.compileExpr(pnode.children[0]), this.compilePropertyIdentifier(pnode.children[1])]);
-            case Parser.Kind.IndexAccess:
-                assert.eq(pnode.children.length, 2);
-                return new Node(location, Compiler.Kind.TargetIndex, [this.compileExpr(pnode.children[0]), this.compileExpr(pnode.children[1])]);
+        const identifier = node.value.asString();
+        this.symbols.push();
+        try {
+            this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
+            const block = this.compileNode(node.children[2]);
+            return new Runtime.Node_StmtForeach(node.location, identifier, type, expr, block);
         }
-        assert.fail("Unknown node kind in compileTarget: {kind}", {kind:pnode.kind});
-    }
-    compilePropertyIdentifier(pnode: Parser.INode): Node {
-        assert.eq(pnode.kind, Parser.Kind.Identifier);
-        return new Node(pnode.location, Compiler.Kind.ValueScalar, [], pnode.value);
-    }
-    compileExpr(pnode: Parser.INode): Node {
-        switch (pnode.kind) {
-            case Parser.Kind.Identifier:
-                assert.eq(pnode.children.length, 0);
-                return new Node(pnode.location, Compiler.Kind.ValueVariableGet, [], pnode.value);
-            case Parser.Kind.Named:
-                assert.eq(pnode.children.length, 1);
-                return new Node(pnode.location, Compiler.Kind.ValueNamed, [this.compileExpr(pnode.children[0])], pnode.value);
-            case Parser.Kind.LiteralScalar:
-                assert.eq(pnode.children.length, 0);
-                return new Node(pnode.location, Compiler.Kind.ValueScalar, [], pnode.value);
-            case Parser.Kind.LiteralArray:
-                return new Node(pnode.location, Compiler.Kind.ValueArray, pnode.children.map(element => this.compileExpr(element)));
-            case Parser.Kind.LiteralObject:
-                return new Node(pnode.location, Compiler.Kind.ValueObject, pnode.children.map(element => this.compileExpr(element)));
-            case Parser.Kind.TypeKeyword:
-                assert.eq(pnode.children.length, 0);
-                return new Node(pnode.location, Compiler.Kind.TypeKeyword, [], pnode.value);
-            case Parser.Kind.PropertyAccess:
-                assert.eq(pnode.children.length, 2);
-                return this.compileExprPropertyGet(pnode.children[0], pnode.children[1]);
-            case Parser.Kind.IndexAccess:
-                assert.eq(pnode.children.length, 2);
-                return this.compileExprIndexGet(pnode.children[0], pnode.children[1]);
-            case Parser.Kind.FunctionCall:
-                assert.eq(pnode.children.length, 2);
-                return this.compileExprFunctionCall(pnode.children[0], pnode.children[1]);
-            case Parser.Kind.OperatorBinary:
-                assert.eq(pnode.children.length, 2);
-                return this.compileExprBinary(pnode.children[0], pnode.value.asString(), pnode.children[1]);
-            case Parser.Kind.OperatorTernary:
-                assert.eq(pnode.children.length, 3);
-                return this.compileExprTernary(pnode.children[0], pnode.children[1], pnode.children[2]);
+        finally {
+            this.symbols.pop();
         }
-        assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
     }
-    compileExprFunctionCall(callee: Parser.INode, args: Parser.INode): Node {
-        const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
-        const location = children[0].location.span(children[children.length - 1].location);
-        return new Node(location, Compiler.Kind.ValueCall, children);
+    compileStmtForloop(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtForloop);
+        assert.eq(node.children.length, 4);
+        const initialization = this.compileNode(node.children[0]);
+        const condition = this.compileNode(node.children[1]);
+        const advance = this.compileNode(node.children[2]);
+        const block = this.compileNode(node.children[3]);
+        return new Runtime.Node_StmtForloop(node.location, initialization, condition, advance, block);
     }
-    compileExprIndexGet(instance: Parser.INode, index: Parser.INode): Node {
-        const children = [this.compileExpr(instance), this.compileExpr(index)];
-        const location = children[0].location.span(children[1].location);
-        return new Node(location, Compiler.Kind.ValueIndexGet, children);
+    compileStmtIf(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtIf);
+        assert.ge(node.children.length, 2);
+        const condition = this.compileNode(node.children[0]);
+        const ifBlock = this.compileNode(node.children[1]);
+        if (node.children.length === 2) {
+            return new Runtime.Node_StmtIf(node.location, condition, ifBlock, Impl.EMPTY);
+        }
+        assert.eq(node.children.length, 3);
+        const elseBlock = this.compileNode(node.children[2]);
+        return new Runtime.Node_StmtIf(node.location, condition, ifBlock, elseBlock);
     }
-    compileExprPropertyGet(instance: Parser.INode, property: Parser.INode): Node {
-        assert.eq(property.kind, Parser.Kind.Identifier);
-        const children = [this.compileExpr(instance), this.compilePropertyIdentifier(property)];
-        const location = children[0].location.span(children[1].location);
-        return new Node(location, Compiler.Kind.ValuePropertyGet, children);
+    compileStmtIfGuard(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtIfGuard);
+        assert.ge(node.children.length, 3);
+        const identifier = node.value.asString();
+        const type = this.compileNode(node.children[0]).resolve(this);
+        assert(!type.isEmpty());
+        const initializer = this.compileNode(node.children[1]);
+        let ifBlock;
+        this.symbols.push();
+        try {
+            this.symbols.add(identifier, SymbolFlavour.Guard, type, Value.VOID);
+            ifBlock = this.compileNode(node.children[2]);
+        }
+        finally {
+            this.symbols.pop();
+        }
+        if (node.children.length === 3) {
+            return new Runtime.Node_StmtIfGuard(node.location, identifier, type, initializer, ifBlock, Impl.EMPTY);
+        }
+        assert.eq(node.children.length, 4);
+        const elseBlock = this.compileNode(node.children[3]);
+        return new Runtime.Node_StmtIfGuard(node.location, identifier, type, initializer, ifBlock, elseBlock);
     }
-    compileExprBinary(plhs: Parser.INode, op: string, prhs: Parser.INode): Node {
-        const children = [this.compileExpr(plhs), this.compileExpr(prhs)];
-        const location = children[0].location.span(children[1].location);
-        return new Node(location, Compiler.Kind.ValueOperatorBinary, children, Value.fromString(op));
+    compileStmtReturn(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtReturn);
+        assert.eq(node.children.length, 1);
+        const expr = this.compileNode(node.children[0]);
+        return new Runtime.Node_StmtReturn(node.location, expr);
     }
-    compileExprTernary(plhs: Parser.INode, pmid: Parser.INode, prhs: Parser.INode): Node {
-        const children = [this.compileExpr(plhs), this.compileExpr(pmid), this.compileExpr(prhs)];
-        const location = children[0].location.span(children[1].location);
-        return new Node(location, Compiler.Kind.ValueOperatorTernary, children);
+    compileStmtTry(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtTry);
+        assert.ge(node.children.length, 2);
+        const hasFinally = node.value.asBoolean();
+        const tryBlock = this.compileNode(node.children[0]);
+        if (hasFinally) {
+            const catchClauses = node.children.slice(1, -1).map(child => this.compileStmtCatch(child));
+            const finallyClause = this.compileNode(node.children[node.children.length - 1]);
+            return new Runtime.Node_StmtTry(node.location, tryBlock, catchClauses, finallyClause);
+        } else {
+            const catchClauses = node.children.slice(1).map(child => this.compileStmtCatch(child));
+            return new Runtime.Node_StmtTry(node.location, tryBlock, catchClauses, Impl.EMPTY);
+        }
     }
-    compileExprArguments(pnode: Parser.INode): Node[] {
-        assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
-        return pnode.children.map(child => this.compileExpr(child));
+    compileStmtCatch(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtCatch);
+        assert.eq(node.children.length, 2);
+        const identifier = node.value.asString();
+        const type = this.compileNode(node.children[0]);
+        this.symbols.push();
+        try {
+            this.symbols.add(identifier, SymbolFlavour.Exception, type.resolve(this), Value.VOID);
+            const block = this.compileNode(node.children[1]);
+            return new Runtime.Node_StmtCatch(node.location, identifier, type, block);
+        }
+        finally {
+            this.symbols.pop();
+        }
+    }
+    compileTargetVariable(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.TargetVariable);
+        assert.eq(node.children.length, 0);
+        const identifier = node.value.asString();
+        const symbol = this.symbols.find(identifier);
+        if (symbol === undefined) {
+            throw new CompilerException(node.location, "Unknown identifier: '{identifier}'", { identifier });
+        }
+        return new Runtime.Node_TargetVariable(node.location, identifier);
+    }
+    resolveIdentifier(identifier: string): Type {
+        const symbol = this.symbols.find(identifier);
+        if (symbol) {
+            return symbol.type;
+        }
+        throw new CompilerException(undefined, "Unknown identifier: '{identifier}'", { identifier });
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
@@ -251,72 +366,25 @@ class Impl extends Logger {
 }
 
 export class Compiler {
-    constructor(public parser: Parser) {
-    }
-    compile(): Module {
-        const parsed = this.parser.parse();
-        const impl = new Impl(parsed, this.logger);
-        return impl.compileModule();
+    logger?: Logger;
+    modules: Module[] = [];
+    compile(): Program {
+        const impl = new Impl(this.modules, this.logger ?? new ConsoleLogger());
+        return impl.compileProgram();
     }
     withLogger(logger: Logger): Compiler {
-        this.parser.withLogger(logger);
+        this.logger = logger;
         return this;
     }
-    get logger() {
-        return this.parser.logger;
-    }
-    static fromString(input: string, source?: string): Compiler {
-        return new Compiler(Parser.fromString(input, source));
+    withModule(module: Syntax.IModule): Compiler {
+        const impl = new Impl(this.modules, this.logger ?? new ConsoleLogger());
+        this.modules.push(impl.compileModule(module));
+        return this;
     }
 }
 
-export namespace Compiler {
-    export enum Kind {
-        Module = "module",
-        StmtBlock = "stmt-block",
-        StmtAssert = "stmt-assert",
-        StmtIf = "stmt-if",
-        StmtIfGuard = "stmt-if-guard",
-        StmtReturn = "stmt-return",
-        StmtTry = "stmt-try",
-        StmtCatch = "stmt-catch",
-        StmtCall = "stmt-call",
-        StmtAssign = "stmt-assign",
-        StmtMutate = "stmt-mutate",
-        StmtNudge = "stmt-nudge",
-        StmtForeach = "stmt-foreach",
-        StmtForloop = "stmt-forloop",
-        StmtVariableDeclare = "stmt-variable-declare",
-        StmtVariableDefine = "stmt-variable-define",
-        StmtFunctionDefine = "stmt-function-define",
-        FunctionParameters = "function-parameters",
-        FunctionParameter = "function-parameter",
-        TargetVariable = "target-variable",
-        TargetProperty = "target-property",
-        TargetIndex = "target-index",
-        TypeInfer = "type-infer",
-        TypeKeyword = "type-keyword",
-        TypeNullable = "type-nullable",
-        ValueNamed = "value-named",
-        ValueScalar = "value-scalar",
-        ValueArray = "value-array",
-        ValueObject = "value-object",
-        ValueCall = "value-call",
-        ValueVariableGet = "value-variable-get",
-        ValuePropertyGet = "value-property-get",
-        ValueIndexGet = "value-index-get",
-        ValueOperatorUnary = "value-operator-unary",
-        ValueOperatorBinary = "value-operator-binary",
-        ValueOperatorTernary = "value-operator-ternary",
-    }
-    export interface INode {
-        kind: Kind;
-        children: INode[];
-        value: Value;
-        location: Location;
-    }
-    export interface IModule {
-        root: INode;
-        readonly source: string;
+class CompilerException extends Exception {
+    constructor(location: Location | undefined, message: string, parameters?: Message.Parameters) {
+        super(CompilerException.name, Exception.Origin.Compiler, message, { location, ...parameters });
     }
 }

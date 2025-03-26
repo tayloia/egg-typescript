@@ -34,7 +34,6 @@ export namespace Message {
     export enum Origin {
         Assertion = "ASSERTION",
         Compiler = "COMPILER",
-        Linker = "LINKER",
         Parser = "PARSER",
         Runtime = "RUNTIME",
         Tokenizer = "TOKENIZER",

@@ -4,4 +4,4 @@ if (int i = a) {
 } else {
   print("unknown: ", i);
 }
-///<LINKER><ERROR><RESOURCE>(5,22): Unknown identifier: 'i'
+///<COMPILER><ERROR><RESOURCE>(5,22): Unknown identifier: 'i'

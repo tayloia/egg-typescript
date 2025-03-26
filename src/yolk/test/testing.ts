@@ -1,7 +1,7 @@
 import * as fs from "fs";
 
+import { Syntax } from "../syntax";
 import { Compiler } from "../compiler";
-import { Linker } from "../linker";
 import { Logger } from "../logger";
 import { Parser } from "../parser";
 import { Program } from "../program";
@@ -76,14 +76,14 @@ export class TestProgram extends TestLogger {
     parse(): Parser.INode {
         return Parser.fromString(this.input, this.source).withLogger(this).parse();
     }
-    compile(): Compiler.IModule {
-        return Compiler.fromString(this.input, this.source).withLogger(this).compile();
+    syntax(): Syntax.IModule {
+        return Syntax.fromString(this.input, this.source).withLogger(this).syntax();
     }
-    link(): Program {
-        return new Linker().withLogger(this).withModule(this.compile()).link();
+    compile(): Program {
+        return new Compiler().withLogger(this).withModule(this.syntax()).compile();
     }
     run(): void {
-        this.link().run(this);
+        this.compile().run(this);
     }
     test(): void {
         const makeExpected = (line: string) => {
