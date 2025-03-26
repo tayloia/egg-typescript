@@ -4,7 +4,6 @@ import { RuntimeException } from "./exception";
 import { FunctionArguments } from "./function";
 import { ILogger, Logger } from "./logger";
 import { Manifestations } from "./manifestations";
-import { Message } from "./message";
 import { SymbolFlavour, SymbolTable } from "./symboltable";
 import { Type } from "./type";
 import { Value } from "./value";
@@ -21,7 +20,6 @@ export namespace Program {
     export type Callsite = (runner: IRunner, args: FunctionArguments) => Value;
     export interface IResolver extends ILogger {
         resolveIdentifier(identifier: string): Type;
-        resolveFail(message: string, parameters?: Message.Parameters): never;
     }
     export interface IRunner extends IResolver {
         readonly manifestations: Manifestations;
@@ -60,10 +58,7 @@ class Runner implements Program.IRunner {
         if (entry) {
             return entry.type;
         }
-        this.resolveFail("Identifier not found: '{identifier}'", { identifier });
-    }
-    resolveFail(message: string, parameters?: Message.Parameters): never {
-        throw new RuntimeException(message, parameters);
+        throw new RuntimeException("Identifier not found: '{identifier}'", { identifier });
     }
     run(): void {
         assert.eq(this.program.modules.length, 1);

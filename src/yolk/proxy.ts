@@ -119,6 +119,7 @@ class ProxyKeyValue extends ProxyImmutableObject {
 }
 
 export class ProxyRuntimeException extends ProxyImmutableObject {
+    // TODO Merge with RuntimeException
     constructor(private exception: RuntimeException) {
         super(ProxyRuntimeException.makeFields(exception));
         console.log(exception.parameters)

@@ -358,10 +358,7 @@ class Impl implements Program.IResolver {
         if (symbol) {
             return symbol.type;
         }
-        this.resolveFail("Unknown identifier: '{identifier}'", { identifier });
-    }
-    resolveFail(message: string, parameters?: Message.Parameters): never {
-        throw new LinkerException(message, parameters);
+        throw new LinkerException("Unknown identifier: '{identifier}'", { identifier });
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
