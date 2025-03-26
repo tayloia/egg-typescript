@@ -59,6 +59,26 @@ abstract class Node {
     }
 }
 
+class Node_Empty extends Node {
+    constructor(location: Location) {
+        super(location);
+    }
+    resolve(resolver: Program.IResolver): Type {
+        this.unimplemented(resolver);
+    }
+    evaluate(runner_: Program.IRunner): Value {
+        // Used by empty conditions: 'for (...; ;...) {}'
+        return Value.TRUE;
+    }
+    execute(runner_: Program.IRunner): Outcome {
+        // Used by empty statement blocks: '{}'
+        return Outcome.THROUGH;
+    }
+    modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
+    }
+}
+
 class Node_Module extends Node {
     constructor(location: Location, public children: Node[]) {
         super(location);
@@ -407,28 +427,6 @@ class Node_StmtForloop extends Node {
 }
 
 class Node_StmtIf extends Node {
-    constructor(location: Location, public condition: Node, public block: Node) {
-        super(location);
-    }
-    resolve(resolver: Program.IResolver): Type {
-        this.unimplemented(resolver);
-    }
-    evaluate(runner: Program.IRunner): Value {
-        this.unimplemented(runner);
-    }
-    execute(runner: Program.IRunner): Outcome {
-        const condition = this.condition.evaluate(runner);
-        if (condition.asBoolean()) {
-            return this.block.execute(runner);
-        }
-        return Outcome.THROUGH;
-    }
-    modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
-        this.unimplemented(runner);
-    }
-}
-
-class Node_StmtIfElse extends Node {
     constructor(location: Location, public condition: Node, public ifBlock: Node, public elseBlock: Node) {
         super(location);
     }
@@ -442,6 +440,41 @@ class Node_StmtIfElse extends Node {
         const condition = this.condition.evaluate(runner);
         if (condition.asBoolean()) {
             return this.ifBlock.execute(runner);
+        }
+        return this.elseBlock.execute(runner);
+    }
+    modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
+    }
+}
+
+class Node_StmtIfGuard extends Node {
+    constructor(location: Location, public identifier: string, public type: Type, public initializer: Node, public ifBlock: Node, public elseBlock: Node) {
+        super(location);
+    }
+    resolve(resolver: Program.IResolver): Type {
+        this.unimplemented(resolver);
+    }
+    evaluate(runner: Program.IRunner): Value {
+        this.unimplemented(runner);
+    }
+    execute(runner: Program.IRunner): Outcome {
+        const initializer = this.initializer.evaluate(runner);
+        const compatible = this.type.compatible(initializer);
+        if (!compatible.isVoid()) {
+            runner.scopePush();
+            try {
+                try {
+                    runner.symbolAdd(this.identifier, SymbolFlavour.Guard, this.type, compatible);
+                }
+                catch (error) {
+                    this.catch(error);
+                }
+                return this.ifBlock.execute(runner);
+            }
+            finally {
+                runner.scopePop();
+            }
         }
         return this.elseBlock.execute(runner);
     }
@@ -473,7 +506,7 @@ class Node_StmtReturn extends Node {
 }
 
 class Node_StmtTry extends Node {
-    constructor(location: Location, public tryBlock: Node, public catchClauses: Node[], public finallyClause?: Node) {
+    constructor(location: Location, public tryBlock: Node, public catchClauses: Node[], public finallyClause: Node) {
         super(location);
     }
     resolve(resolver: Program.IResolver): Type {
@@ -512,10 +545,8 @@ class Node_StmtTry extends Node {
             this.catch(error);
         }
         finally {
-            if (this.finallyClause) {
-                const last = this.finallyClause.execute(runner);
-                assert.eq(last.flow, Flow.Through);
-            }
+            const last = this.finallyClause.execute(runner);
+            assert.eq(last.flow, Flow.Through);
         }
         assert(outcome.flow === Flow.Through || outcome.flow === Flow.Return);
         return outcome;
@@ -543,7 +574,12 @@ class Node_StmtCatch extends Node {
         }
         runner.scopePush();
         try {
-            runner.symbolAdd(this.identifier, SymbolFlavour.Variable, type, exception);
+            try {
+                runner.symbolAdd(this.identifier, SymbolFlavour.Variable, type, exception);
+            }
+            catch (error) {
+                this.catch(error);
+            }
             const outcome = this.block.execute(runner);
             assert(outcome.flow === Flow.Through || outcome.flow === Flow.Return);
             return outcome;
@@ -995,6 +1031,7 @@ class Module implements Program.IModule {
 }
 
 class Impl implements Program.IResolver {
+    readonly EMPTY = new Node_Empty(new Location("(empty)", 0, 0));
     constructor(public modules: Module[], public logger: Logger) {}
     linkProgram(): Program {
         return new Program(this.modules);
@@ -1038,6 +1075,8 @@ class Impl implements Program.IResolver {
                 return this.linkStmtForloop(node);
             case Compiler.Kind.StmtIf:
                 return this.linkStmtIf(node);
+            case Compiler.Kind.StmtIfGuard:
+                return this.linkStmtIfGuard(node);
             case Compiler.Kind.StmtReturn:
                 return this.linkStmtReturn(node);
             case Compiler.Kind.StmtTry:
@@ -1206,11 +1245,24 @@ class Impl implements Program.IResolver {
         const condition = this.linkNode(node.children[0]);
         const ifBlock = this.linkNode(node.children[1]);
         if (node.children.length === 2) {
-            return new Node_StmtIf(node.location, condition, ifBlock);
+            return new Node_StmtIf(node.location, condition, ifBlock, this.EMPTY);
         }
         assert.eq(node.children.length, 3);
         const elseBlock = this.linkNode(node.children[2]);
-        return new Node_StmtIfElse(node.location, condition, ifBlock, elseBlock);
+        return new Node_StmtIf(node.location, condition, ifBlock, elseBlock);
+    }
+    linkStmtIfGuard(node: Compiler.INode): Node {
+        assert(node.kind === Compiler.Kind.StmtIfGuard);
+        assert.ge(node.children.length, 3);
+        const type = this.linkNode(node.children[0]).resolve(this);
+        const initializer = this.linkNode(node.children[1]);
+        const ifBlock = this.linkNode(node.children[2]);
+        if (node.children.length === 3) {
+            return new Node_StmtIfGuard(node.location, node.value.asString(), type, initializer, ifBlock, this.EMPTY);
+        }
+        assert.eq(node.children.length, 4);
+        const elseBlock = this.linkNode(node.children[3]);
+        return new Node_StmtIfGuard(node.location, node.value.asString(), type, initializer, ifBlock, elseBlock);
     }
     linkStmtReturn(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtReturn);
@@ -1229,7 +1281,7 @@ class Impl implements Program.IResolver {
             return new Node_StmtTry(node.location, tryBlock, catchClauses, finallyClause);
         } else {
             const catchClauses = node.children.slice(1).map(child => this.linkStmtCatch(child));
-            return new Node_StmtTry(node.location, tryBlock, catchClauses);
+            return new Node_StmtTry(node.location, tryBlock, catchClauses, this.EMPTY);
         }
     }
     linkStmtCatch(node: Compiler.INode): Node {

@@ -7,7 +7,8 @@ export enum SymbolFlavour {
     Manifestation = "manifestation",
     Function = "function",
     Argument = "argument",
-    Exception = "exception",
+    Exception = "caught exception",
+    Guard = "guard variable",
     Variable = "variable",
 }
 

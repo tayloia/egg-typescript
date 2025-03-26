@@ -41,11 +41,7 @@ class Impl extends Logger {
             case Parser.Kind.StatementBlock:
                 return new Node(pnode.location, Compiler.Kind.StmtBlock, pnode.children.map(child => this.compileStmt(child)));
             case Parser.Kind.StatementIf:
-                if (pnode.children.length === 2) {
-                    return new Node(pnode.location, Compiler.Kind.StmtIf, [this.compileExpr(pnode.children[0]), this.compileStmt(pnode.children[1])]);
-                }
-                assert.eq(pnode.children.length, 3);
-                return new Node(pnode.location, Compiler.Kind.StmtIf, [this.compileExpr(pnode.children[0]), this.compileStmt(pnode.children[1]), this.compileStmt(pnode.children[2])]);
+                return this.compileStmtIf(pnode);
             case Parser.Kind.StatementReturn:
                 assert.eq(pnode.children.length, 1);
                 return new Node(pnode.location, Compiler.Kind.StmtReturn, [this.compileExpr(pnode.children[0])]);
@@ -118,6 +114,24 @@ class Impl extends Logger {
         }
         return new Node(assertion.location, Compiler.Kind.StmtAssert, [this.compileExpr(assertion)]);
     }
+    compileStmtIf(pnode: Parser.INode): Node {
+        assert.eq(pnode.kind, Parser.Kind.StatementIf);
+        assert.ge(pnode.children.length, 2);
+        assert.le(pnode.children.length, 3);
+        let node;
+        if (pnode.children[0].kind === Parser.Kind.Guard) {
+            const guard = pnode.children[0];
+            assert.eq(guard.children.length, 2);
+            node = new Node(pnode.location, Compiler.Kind.StmtIfGuard, [this.compileType(guard.children[0]), this.compileExpr(guard.children[1])], guard.value);
+        } else {
+            node = new Node(pnode.location, Compiler.Kind.StmtIf, [this.compileExpr(pnode.children[0])]);
+        }
+        node.children.push(this.compileStmt(pnode.children[1]));
+        if (pnode.children.length > 2) {
+            node.children.push(this.compileStmt(pnode.children[2]));
+        }
+        return node;
+    }
     compileStmtTry(location: Location, tryBlock: Parser.INode, catchClauses: Parser.INode[], finallyClause: Parser.INode | undefined): Node {
         const children = [this.compileStmt(tryBlock)];
         for (const catchClause of catchClauses) {
@@ -128,6 +142,10 @@ class Impl extends Logger {
             return new Node(location, Compiler.Kind.StmtTry, children, Value.TRUE);
         }
         return new Node(location, Compiler.Kind.StmtTry, children, Value.FALSE);
+    }
+    compileGuard(pnode: Parser.INode): Node {
+        assert.eq(pnode.children.length, 2);
+        return new Node(pnode.location, Compiler.Kind.StmtIfGuard, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
     }
     compileType(pnode: Parser.INode): Node {
         switch (pnode.kind) {
@@ -258,6 +276,7 @@ export namespace Compiler {
         StmtBlock = "stmt-block",
         StmtAssert = "stmt-assert",
         StmtIf = "stmt-if",
+        StmtIfGuard = "stmt-if-guard",
         StmtReturn = "stmt-return",
         StmtTry = "stmt-try",
         StmtCatch = "stmt-catch",
