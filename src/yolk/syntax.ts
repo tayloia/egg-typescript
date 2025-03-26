@@ -19,102 +19,102 @@ class Impl extends Logger {
     constructor(public input: Parser.INode, public logger: Logger) {
         super();
     }
-    compileModule(): Module {
-        const stmts = this.input.children.map(child => this.compileStmt(child));
+    syntaxModule(): Module {
+        const stmts = this.input.children.map(child => this.syntaxStmt(child));
         const root = new Node(this.input.location, Syntax.Kind.Module, stmts);
         return new Module(root);
     }
-    compileStmt(pnode: Parser.INode): Node {
+    syntaxStmt(pnode: Parser.INode): Node {
         switch (pnode.kind) {
             case Parser.Kind.Variable:
                 if (pnode.children.length === 1) {
-                    return new Node(pnode.location, Syntax.Kind.StmtVariableDeclare, [this.compileType(pnode.children[0])], pnode.value)
+                    return new Node(pnode.location, Syntax.Kind.StmtVariableDeclare, [this.syntaxType(pnode.children[0])], pnode.value)
                 }
                 assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Syntax.Kind.StmtVariableDefine, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
+                return new Node(pnode.location, Syntax.Kind.StmtVariableDefine, [this.syntaxType(pnode.children[0]), this.syntaxExpr(pnode.children[1])], pnode.value)
             case Parser.Kind.Function:
                 assert.eq(pnode.children.length, 3);
-                return new Node(pnode.location, Syntax.Kind.StmtFunctionDefine, [this.compileType(pnode.children[0]), this.compileStmtFunctionParameters(pnode.children[1]), this.compileStmt(pnode.children[2])], pnode.value)
+                return new Node(pnode.location, Syntax.Kind.StmtFunctionDefine, [this.syntaxType(pnode.children[0]), this.syntaxStmtFunctionParameters(pnode.children[1]), this.syntaxStmt(pnode.children[2])], pnode.value)
             case Parser.Kind.FunctionCall:
                 assert.eq(pnode.children.length, 2);
-                return this.compileStmtFunctionCall(pnode.children[0], pnode.children[1]);
+                return this.syntaxStmtFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.StatementBlock:
-                return new Node(pnode.location, Syntax.Kind.StmtBlock, pnode.children.map(child => this.compileStmt(child)));
+                return new Node(pnode.location, Syntax.Kind.StmtBlock, pnode.children.map(child => this.syntaxStmt(child)));
             case Parser.Kind.StatementIf:
-                return this.compileStmtIf(pnode);
+                return this.syntaxStmtIf(pnode);
             case Parser.Kind.StatementReturn:
-                assert.eq(pnode.children.length, 1);
-                return new Node(pnode.location, Syntax.Kind.StmtReturn, [this.compileExpr(pnode.children[0])]);
+                assert.le(pnode.children.length, 1);
+                return new Node(pnode.location, Syntax.Kind.StmtReturn, pnode.children.map(child => this.syntaxExpr(child)));
             case Parser.Kind.StatementTry:
                 if (pnode.value.asBoolean()) {
                     assert.ge(pnode.children.length, 2);
-                    return this.compileStmtTry(pnode.location, pnode.children[0], pnode.children.slice(1, -1), pnode.children[pnode.children.length - 1]);
+                    return this.syntaxStmtTry(pnode.location, pnode.children[0], pnode.children.slice(1, -1), pnode.children[pnode.children.length - 1]);
                 }
                 assert.ge(pnode.children.length, 1);
-                return this.compileStmtTry(pnode.location, pnode.children[0], pnode.children.slice(1), undefined);
+                return this.syntaxStmtTry(pnode.location, pnode.children[0], pnode.children.slice(1), undefined);
             case Parser.Kind.StatementCatch:
                 assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Syntax.Kind.StmtCatch, [this.compileType(pnode.children[0]), this.compileStmt(pnode.children[1])], pnode.value);
+                return new Node(pnode.location, Syntax.Kind.StmtCatch, [this.syntaxType(pnode.children[0]), this.syntaxStmt(pnode.children[1])], pnode.value);
             case Parser.Kind.StatementAssign:
                 assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Syntax.Kind.StmtAssign, [this.compileTarget(pnode.location, pnode.children[0]), this.compileExpr(pnode.children[1])]);
+                return new Node(pnode.location, Syntax.Kind.StmtAssign, [this.syntaxTarget(pnode.location, pnode.children[0]), this.syntaxExpr(pnode.children[1])]);
             case Parser.Kind.StatementMutate:
                 assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Syntax.Kind.StmtMutate, [this.compileTarget(pnode.location, pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value);
+                return new Node(pnode.location, Syntax.Kind.StmtMutate, [this.syntaxTarget(pnode.location, pnode.children[0]), this.syntaxExpr(pnode.children[1])], pnode.value);
             case Parser.Kind.StatementNudge:
                 assert.eq(pnode.children.length, 1);
-                return new Node(pnode.location, Syntax.Kind.StmtNudge, [this.compileTarget(pnode.location, pnode.children[0])], pnode.value);
+                return new Node(pnode.location, Syntax.Kind.StmtNudge, [this.syntaxTarget(pnode.location, pnode.children[0])], pnode.value);
             case Parser.Kind.StatementForeach:
                 assert.eq(pnode.children.length, 3);
                 return new Node(pnode.location, Syntax.Kind.StmtForeach, [
-                    this.compileType(pnode.children[0]),
-                    this.compileExpr(pnode.children[1]),
-                    this.compileStmt(pnode.children[2]),
+                    this.syntaxType(pnode.children[0]),
+                    this.syntaxExpr(pnode.children[1]),
+                    this.syntaxStmt(pnode.children[2]),
                 ], pnode.value);
             case Parser.Kind.StatementForloop:
                 assert.eq(pnode.children.length, 4);
                 return new Node(pnode.location, Syntax.Kind.StmtForloop, [
-                    this.compileStmt(pnode.children[0]),
-                    this.compileExpr(pnode.children[1]),
-                    this.compileStmt(pnode.children[2]),
-                    this.compileStmt(pnode.children[3]),
+                    this.syntaxStmt(pnode.children[0]),
+                    this.syntaxExpr(pnode.children[1]),
+                    this.syntaxStmt(pnode.children[2]),
+                    this.syntaxStmt(pnode.children[3]),
                 ]);
         }
-        assert.fail("Unknown node kind in compileStmt: {kind}", {kind:pnode.kind});
+        assert.fail("Unknown node kind in syntaxStmt: {kind}", {kind:pnode.kind});
     }
-    compileStmtFunctionParameters(parameters: Parser.INode): Node {
+    syntaxStmtFunctionParameters(parameters: Parser.INode): Node {
         assert.eq(parameters.kind, Parser.Kind.FunctionParameters);
-        return new Node(parameters.location, Syntax.Kind.FunctionParameters, parameters.children.map(child => this.compileStmtFunctionParameter(child)), parameters.value);
+        return new Node(parameters.location, Syntax.Kind.FunctionParameters, parameters.children.map(child => this.syntaxStmtFunctionParameter(child)), parameters.value);
     }
-    compileStmtFunctionParameter(parameter: Parser.INode): Node {
+    syntaxStmtFunctionParameter(parameter: Parser.INode): Node {
         assert.eq(parameter.kind, Parser.Kind.FunctionParameter);
         assert.eq(parameter.children.length, 1);
-        return new Node(parameter.location, Syntax.Kind.FunctionParameter, [this.compileType(parameter.children[0])], parameter.value);
+        return new Node(parameter.location, Syntax.Kind.FunctionParameter, [this.syntaxType(parameter.children[0])], parameter.value);
     }
-    compileStmtFunctionCall(callee: Parser.INode, args: Parser.INode): Node {
+    syntaxStmtFunctionCall(callee: Parser.INode, args: Parser.INode): Node {
         if (callee.kind === Parser.Kind.Identifier && callee.value.asString() === "assert") {
             assert.eq(args.kind, Parser.Kind.FunctionArguments);
             assert.eq(args.children.length, 1);
-            return this.compileStmtAssert(args.children[0]);
+            return this.syntaxStmtAssert(args.children[0]);
         }
-        const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
+        const children = [this.syntaxExpr(callee), ...this.syntaxExprArguments(args)];
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Syntax.Kind.StmtCall, children);
     }
-    compileStmtAssert(assertion: Parser.INode): Node {
+    syntaxStmtAssert(assertion: Parser.INode): Node {
         if (assertion.kind === Parser.Kind.OperatorUnary) {
             assert.eq(assertion.children.length, 1);
-            const children = [this.compileExpr(assertion.children[0])];
+            const children = [this.syntaxExpr(assertion.children[0])];
             return new Node(assertion.location, Syntax.Kind.StmtAssert, children, assertion.value);    
         }
         if (assertion.kind === Parser.Kind.OperatorBinary) {
             assert.eq(assertion.children.length, 2);
-            const children = [this.compileExpr(assertion.children[0]), this.compileExpr(assertion.children[1])];
+            const children = [this.syntaxExpr(assertion.children[0]), this.syntaxExpr(assertion.children[1])];
             return new Node(assertion.location, Syntax.Kind.StmtAssert, children, assertion.value);    
         }
-        return new Node(assertion.location, Syntax.Kind.StmtAssert, [this.compileExpr(assertion)]);
+        return new Node(assertion.location, Syntax.Kind.StmtAssert, [this.syntaxExpr(assertion)]);
     }
-    compileStmtIf(pnode: Parser.INode): Node {
+    syntaxStmtIf(pnode: Parser.INode): Node {
         assert.eq(pnode.kind, Parser.Kind.StatementIf);
         assert.ge(pnode.children.length, 2);
         assert.le(pnode.children.length, 3);
@@ -122,32 +122,32 @@ class Impl extends Logger {
         if (pnode.children[0].kind === Parser.Kind.Guard) {
             const guard = pnode.children[0];
             assert.eq(guard.children.length, 2);
-            node = new Node(pnode.location, Syntax.Kind.StmtIfGuard, [this.compileType(guard.children[0]), this.compileExpr(guard.children[1])], guard.value);
+            node = new Node(pnode.location, Syntax.Kind.StmtIfGuard, [this.syntaxType(guard.children[0]), this.syntaxExpr(guard.children[1])], guard.value);
         } else {
-            node = new Node(pnode.location, Syntax.Kind.StmtIf, [this.compileExpr(pnode.children[0])]);
+            node = new Node(pnode.location, Syntax.Kind.StmtIf, [this.syntaxExpr(pnode.children[0])]);
         }
-        node.children.push(this.compileStmt(pnode.children[1]));
+        node.children.push(this.syntaxStmt(pnode.children[1]));
         if (pnode.children.length > 2) {
-            node.children.push(this.compileStmt(pnode.children[2]));
+            node.children.push(this.syntaxStmt(pnode.children[2]));
         }
         return node;
     }
-    compileStmtTry(location: Location, tryBlock: Parser.INode, catchClauses: Parser.INode[], finallyClause: Parser.INode | undefined): Node {
-        const children = [this.compileStmt(tryBlock)];
+    syntaxStmtTry(location: Location, tryBlock: Parser.INode, catchClauses: Parser.INode[], finallyClause: Parser.INode | undefined): Node {
+        const children = [this.syntaxStmt(tryBlock)];
         for (const catchClause of catchClauses) {
-            children.push(this.compileStmt(catchClause));
+            children.push(this.syntaxStmt(catchClause));
         }
         if (finallyClause) {
-            children.push(this.compileStmt(finallyClause));
+            children.push(this.syntaxStmt(finallyClause));
             return new Node(location, Syntax.Kind.StmtTry, children, Value.TRUE);
         }
         return new Node(location, Syntax.Kind.StmtTry, children, Value.FALSE);
     }
-    compileGuard(pnode: Parser.INode): Node {
+    syntaxGuard(pnode: Parser.INode): Node {
         assert.eq(pnode.children.length, 2);
-        return new Node(pnode.location, Syntax.Kind.StmtIfGuard, [this.compileType(pnode.children[0]), this.compileExpr(pnode.children[1])], pnode.value)
+        return new Node(pnode.location, Syntax.Kind.StmtIfGuard, [this.syntaxType(pnode.children[0]), this.syntaxExpr(pnode.children[1])], pnode.value)
     }
-    compileType(pnode: Parser.INode): Node {
+    syntaxType(pnode: Parser.INode): Node {
         switch (pnode.kind) {
             case Parser.Kind.TypeInfer:
                 assert.eq(pnode.children.length, 0);
@@ -157,93 +157,93 @@ class Impl extends Logger {
                 return new Node(pnode.location, Syntax.Kind.TypeKeyword, [], pnode.value);
             case Parser.Kind.TypeNullable:
                 assert.eq(pnode.children.length, 1);
-                return new Node(pnode.location, Syntax.Kind.TypeNullable, [this.compileType(pnode.children[0])]);
+                return new Node(pnode.location, Syntax.Kind.TypeNullable, [this.syntaxType(pnode.children[0])]);
         }
-        assert.fail("Unknown node kind in compileType: {kind}", {kind:pnode.kind});
+        assert.fail("Unknown node kind in syntaxType: {kind}", {kind:pnode.kind});
     }
-    compileTarget(location: Location, pnode: Parser.INode): Node {
+    syntaxTarget(location: Location, pnode: Parser.INode): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
                 assert.eq(pnode.children.length, 0);
                 return new Node(location, Syntax.Kind.TargetVariable, [], pnode.value);
             case Parser.Kind.PropertyAccess:
                 assert.eq(pnode.children.length, 2);
-                return new Node(location, Syntax.Kind.TargetProperty, [this.compileExpr(pnode.children[0]), this.compilePropertyIdentifier(pnode.children[1])]);
+                return new Node(location, Syntax.Kind.TargetProperty, [this.syntaxExpr(pnode.children[0]), this.syntaxPropertyIdentifier(pnode.children[1])]);
             case Parser.Kind.IndexAccess:
                 assert.eq(pnode.children.length, 2);
-                return new Node(location, Syntax.Kind.TargetIndex, [this.compileExpr(pnode.children[0]), this.compileExpr(pnode.children[1])]);
+                return new Node(location, Syntax.Kind.TargetIndex, [this.syntaxExpr(pnode.children[0]), this.syntaxExpr(pnode.children[1])]);
         }
-        assert.fail("Unknown node kind in compileTarget: {kind}", {kind:pnode.kind});
+        assert.fail("Unknown node kind in syntaxTarget: {kind}", {kind:pnode.kind});
     }
-    compilePropertyIdentifier(pnode: Parser.INode): Node {
+    syntaxPropertyIdentifier(pnode: Parser.INode): Node {
         assert.eq(pnode.kind, Parser.Kind.Identifier);
         return new Node(pnode.location, Syntax.Kind.ValueScalar, [], pnode.value);
     }
-    compileExpr(pnode: Parser.INode): Node {
+    syntaxExpr(pnode: Parser.INode): Node {
         switch (pnode.kind) {
             case Parser.Kind.Identifier:
                 assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Syntax.Kind.ValueVariableGet, [], pnode.value);
             case Parser.Kind.Named:
                 assert.eq(pnode.children.length, 1);
-                return new Node(pnode.location, Syntax.Kind.ValueNamed, [this.compileExpr(pnode.children[0])], pnode.value);
+                return new Node(pnode.location, Syntax.Kind.ValueNamed, [this.syntaxExpr(pnode.children[0])], pnode.value);
             case Parser.Kind.LiteralScalar:
                 assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Syntax.Kind.ValueScalar, [], pnode.value);
             case Parser.Kind.LiteralArray:
-                return new Node(pnode.location, Syntax.Kind.ValueArray, pnode.children.map(element => this.compileExpr(element)));
+                return new Node(pnode.location, Syntax.Kind.ValueArray, pnode.children.map(element => this.syntaxExpr(element)));
             case Parser.Kind.LiteralObject:
-                return new Node(pnode.location, Syntax.Kind.ValueObject, pnode.children.map(element => this.compileExpr(element)));
+                return new Node(pnode.location, Syntax.Kind.ValueObject, pnode.children.map(element => this.syntaxExpr(element)));
             case Parser.Kind.TypeKeyword:
                 assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Syntax.Kind.TypeKeyword, [], pnode.value);
             case Parser.Kind.PropertyAccess:
                 assert.eq(pnode.children.length, 2);
-                return this.compileExprPropertyGet(pnode.children[0], pnode.children[1]);
+                return this.syntaxExprPropertyGet(pnode.children[0], pnode.children[1]);
             case Parser.Kind.IndexAccess:
                 assert.eq(pnode.children.length, 2);
-                return this.compileExprIndexGet(pnode.children[0], pnode.children[1]);
+                return this.syntaxExprIndexGet(pnode.children[0], pnode.children[1]);
             case Parser.Kind.FunctionCall:
                 assert.eq(pnode.children.length, 2);
-                return this.compileExprFunctionCall(pnode.children[0], pnode.children[1]);
+                return this.syntaxExprFunctionCall(pnode.children[0], pnode.children[1]);
             case Parser.Kind.OperatorBinary:
                 assert.eq(pnode.children.length, 2);
-                return this.compileExprBinary(pnode.children[0], pnode.value.asString(), pnode.children[1]);
+                return this.syntaxExprBinary(pnode.children[0], pnode.value.asString(), pnode.children[1]);
             case Parser.Kind.OperatorTernary:
                 assert.eq(pnode.children.length, 3);
-                return this.compileExprTernary(pnode.children[0], pnode.children[1], pnode.children[2]);
+                return this.syntaxExprTernary(pnode.children[0], pnode.children[1], pnode.children[2]);
         }
-        assert.fail("Unknown node kind in compileExpr: {kind}", {kind:pnode.kind});
+        assert.fail("Unknown node kind in syntaxExpr: {kind}", {kind:pnode.kind});
     }
-    compileExprFunctionCall(callee: Parser.INode, args: Parser.INode): Node {
-        const children = [this.compileExpr(callee), ...this.compileExprArguments(args)];
+    syntaxExprFunctionCall(callee: Parser.INode, args: Parser.INode): Node {
+        const children = [this.syntaxExpr(callee), ...this.syntaxExprArguments(args)];
         const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Syntax.Kind.ValueCall, children);
     }
-    compileExprIndexGet(instance: Parser.INode, index: Parser.INode): Node {
-        const children = [this.compileExpr(instance), this.compileExpr(index)];
+    syntaxExprIndexGet(instance: Parser.INode, index: Parser.INode): Node {
+        const children = [this.syntaxExpr(instance), this.syntaxExpr(index)];
         const location = children[0].location.span(children[1].location);
         return new Node(location, Syntax.Kind.ValueIndexGet, children);
     }
-    compileExprPropertyGet(instance: Parser.INode, property: Parser.INode): Node {
+    syntaxExprPropertyGet(instance: Parser.INode, property: Parser.INode): Node {
         assert.eq(property.kind, Parser.Kind.Identifier);
-        const children = [this.compileExpr(instance), this.compilePropertyIdentifier(property)];
+        const children = [this.syntaxExpr(instance), this.syntaxPropertyIdentifier(property)];
         const location = children[0].location.span(children[1].location);
         return new Node(location, Syntax.Kind.ValuePropertyGet, children);
     }
-    compileExprBinary(plhs: Parser.INode, op: string, prhs: Parser.INode): Node {
-        const children = [this.compileExpr(plhs), this.compileExpr(prhs)];
+    syntaxExprBinary(plhs: Parser.INode, op: string, prhs: Parser.INode): Node {
+        const children = [this.syntaxExpr(plhs), this.syntaxExpr(prhs)];
         const location = children[0].location.span(children[1].location);
         return new Node(location, Syntax.Kind.ValueOperatorBinary, children, Value.fromString(op));
     }
-    compileExprTernary(plhs: Parser.INode, pmid: Parser.INode, prhs: Parser.INode): Node {
-        const children = [this.compileExpr(plhs), this.compileExpr(pmid), this.compileExpr(prhs)];
+    syntaxExprTernary(plhs: Parser.INode, pmid: Parser.INode, prhs: Parser.INode): Node {
+        const children = [this.syntaxExpr(plhs), this.syntaxExpr(pmid), this.syntaxExpr(prhs)];
         const location = children[0].location.span(children[1].location);
         return new Node(location, Syntax.Kind.ValueOperatorTernary, children);
     }
-    compileExprArguments(pnode: Parser.INode): Node[] {
+    syntaxExprArguments(pnode: Parser.INode): Node[] {
         assert.eq(pnode.kind, Parser.Kind.FunctionArguments);
-        return pnode.children.map(child => this.compileExpr(child));
+        return pnode.children.map(child => this.syntaxExpr(child));
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
@@ -256,7 +256,7 @@ export class Syntax {
     syntax(): Module {
         const parsed = this.parser.parse();
         const impl = new Impl(parsed, this.logger);
-        return impl.compileModule();
+        return impl.syntaxModule();
     }
     withLogger(logger: Logger): Syntax {
         this.parser.withLogger(logger);

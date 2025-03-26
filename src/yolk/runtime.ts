@@ -484,7 +484,7 @@ export namespace Runtime {
     }
 
     export class Node_StmtReturn extends Node {
-        constructor(location: Location, public expr: Node | undefined) {
+        constructor(location: Location, public expr?: Node) {
             super(location);
         }
         resolve(resolver: Program.IResolver): Type {
@@ -994,7 +994,9 @@ export namespace Runtime {
             super(location);
         }
         resolve(resolver: Program.IResolver): Type {
-            this.unimplemented(resolver);
+            const ltype = this.lhs.resolve(resolver);
+            const rtype = this.rhs.resolve(resolver);
+            return Type.binary(ltype, this.op, rtype);
         }
         evaluate(runner: Program.IRunner): Value {
             const lhs = this.lhs.evaluate(runner);

@@ -141,8 +141,8 @@ class Node implements Parser.INode {
         }
         return new Node(location, Parser.Kind.StatementIf, [condition, ifBlock]);
     }
-    static createStatementReturn(location: Location, expr: Node): Node {
-        return new Node(location, Parser.Kind.StatementReturn, [expr]);
+    static createStatementReturn(location: Location, expr?: Node): Node {
+        return new Node(location, Parser.Kind.StatementReturn, expr ? [expr] : []);
     }
     static createStatementTry(location: Location, tryBlock: Node, catchClauses: Node[], finallyBlock?: Node): Node {
         if (finallyBlock) {
@@ -392,8 +392,11 @@ class Impl extends Logger {
         if (this.peekKeyword(lookahead) !== "return") {
             return undefined;
         }
+        if (this.peekPunctuation(lookahead + 1) === ";") {
+            return new Success(Node.createStatementReturn(this.peekLocation(lookahead)), lookahead + 2);
+        }
         const expr = this.parseValueExpression(lookahead + 1)
-                  ?? this.unexpected("Expected expression in 'return' statement", lookahead + 1);
+                  ?? this.unexpected("Expected semicolon or expression after 'return'", lookahead + 1);
         this.expectSemicolon(expr);
         const location = this.peekLocation(lookahead, expr.lookahead);
         return new Success(Node.createStatementReturn(location, expr.node), expr.lookahead + 1);

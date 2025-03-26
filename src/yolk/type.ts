@@ -94,6 +94,10 @@ export class Type {
         }
         return Value.VOID;
     }
+    static binary(ltype_: Type, op_: string, rtype_: Type): Type {
+        // TODO
+        return Type.INT;
+    }
     describe(): string {
         const joined = Array.from(this.primitives.values()).join("|");
         return joined || "unknown";

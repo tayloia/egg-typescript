@@ -16,12 +16,49 @@ class Module implements Program.IModule {
     constructor(public readonly root: Program.INode, public readonly source: string) {}
 }
 
+enum ScopeKind {
+    Module,
+    Function,
+}
+
+class ScopeFrame {
+    constructor(public kind: ScopeKind, public chain?: ScopeFrame) {}
+    signature?: FunctionSignature;
+}
+
+class Scope {
+    private frame = new ScopeFrame(ScopeKind.Module);
+    private push(kind: ScopeKind) {
+        return this.frame = new ScopeFrame(kind, this.frame);
+    }
+    pushFunction(signature: FunctionSignature) {
+        this.push(ScopeKind.Function).signature = signature;
+    }
+    pop() {
+        if (this.frame.chain) {
+            this.frame = this.frame.chain;
+        } else {
+            assert.unreachable();
+        }
+    }
+    findFunction() {
+        for (let frame : ScopeFrame | undefined = this.frame; frame; frame = frame.chain) {
+            if (frame.signature) {
+                return frame.signature;
+            }
+        }
+        return undefined;
+    }
+}
+
 class Impl implements Program.IResolver {
     static readonly EMPTY = new Runtime.Node_Empty(new Location("(empty)", 0, 0));
     constructor(public modules: Module[], public logger: Logger) {
+        this.scope = new Scope();
         this.symbols = new SymbolTable();
         this.symbols.builtin(new Builtins.Print());
     }
+    scope: Scope;
     symbols: SymbolTable;
     compileProgram(): Program {
         return new Program(this.modules);
@@ -158,7 +195,7 @@ class Impl implements Program.IResolver {
         if (symbol) {
             return new Runtime.Node_ValueVariableGet(node.location, identifier);
         }
-        throw new CompilerException(node.location, "Unknown identifier: '{identifier}'", { identifier });
+        this.raise(node, "Unknown identifier: '{identifier}'", { identifier });
     }
     compileValuePropertyGet(node: Syntax.INode): Runtime.Node {
         assert(node.kind === Syntax.Kind.ValuePropertyGet);
@@ -197,7 +234,7 @@ class Impl implements Program.IResolver {
         const itype = initializer.resolve(this);
         assert(!type.isEmpty());
         if (type.compatibleType(itype).isEmpty()) {
-            throw new CompilerException(initializer.location, `Cannot initialize variable '{identifier}' of type '${type.describe()}' with a value of type '${itype.describe()}'`, { identifier });
+            this.raise(node.children[1], `Cannot initialize variable '{identifier}' of type '${type.describe()}' with a value of type '${itype.describe()}'`, { identifier });
         }
         this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
         return new Runtime.Node_StmtVariableDefine(initializer.location, identifier, type, initializer);
@@ -222,8 +259,14 @@ class Impl implements Program.IResolver {
                 return new FunctionParameter(pname, ptype);
             });
             const signature = new FunctionSignature(fname, node.location, rettype, parameters);
-            const block = this.compileNode(node.children[2]);
-            return new Runtime.Node_StmtFunctionDefine(node.location, signature, block);
+            this.scope.pushFunction(signature);
+            try {
+                const block = this.compileNode(node.children[2]);
+                return new Runtime.Node_StmtFunctionDefine(node.location, signature, block);
+            }
+            finally {
+                this.scope.pop();
+            }
         }
         finally {
             this.symbols.pop();
@@ -239,7 +282,7 @@ class Impl implements Program.IResolver {
             assert(!resolved.isEmpty());
             const elements = resolved.getIterable();
             if (elements === undefined) {
-                throw new CompilerException(expr.location, `Value of type '${resolved.describe()}' is not iterable in 'for' statement`);
+                this.raise(node.children[1], `Value of type '${resolved.describe()}' is not iterable in 'for' statement`);
             }
             if (node.children[0].value.getBool()) {
                 // Allow 'var?'
@@ -310,8 +353,21 @@ class Impl implements Program.IResolver {
     }
     compileStmtReturn(node: Syntax.INode): Runtime.Node {
         assert(node.kind === Syntax.Kind.StmtReturn);
-        assert.eq(node.children.length, 1);
+        assert.le(node.children.length, 1);
+        const signature = this.scope.findFunction();
+        if (signature === undefined) {
+            this.raise(node, "Unexpected 'return' statement");
+        }
+        if (node.children.length === 0) {
+            if (signature.rettype.hasVoid()) {
+                return new Runtime.Node_StmtReturn(node.location);
+            }
+            this.raise(node, `Expected 'return' statement with a value of type '${signature.rettype.describe()}'`);
+        }
         const expr = this.compileNode(node.children[0]);
+        if (signature.rettype.compatibleType(expr.resolve(this)).isEmpty()) {
+            this.raise(node, "Incompatible 'return' statement value");
+        }
         return new Runtime.Node_StmtReturn(node.location, expr);
     }
     compileStmtTry(node: Syntax.INode): Runtime.Node {
@@ -349,7 +405,7 @@ class Impl implements Program.IResolver {
         const identifier = node.value.asString();
         const symbol = this.symbols.find(identifier);
         if (symbol === undefined) {
-            throw new CompilerException(node.location, "Unknown identifier: '{identifier}'", { identifier });
+            this.raise(node, "Unknown identifier: '{identifier}'", { identifier });
         }
         return new Runtime.Node_TargetVariable(node.location, identifier);
     }
@@ -359,6 +415,9 @@ class Impl implements Program.IResolver {
             return symbol.type;
         }
         throw new CompilerException(undefined, "Unknown identifier: '{identifier}'", { identifier });
+    }
+    raise(node: Syntax.INode, message: string, parameters?: Message.Parameters): never {
+        throw new CompilerException(node.location, message, parameters);
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);

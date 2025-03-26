@@ -18,13 +18,13 @@ export class SymbolTableEntry {
 }
 
 class SymbolTableFrame extends Map<string, SymbolTableEntry> {
-    constructor(public chain: SymbolTableFrame | undefined) {
+    constructor(public chain?: SymbolTableFrame) {
         super();
     }
 }
 
 export class SymbolTable {
-    private frame = new SymbolTableFrame(undefined);
+    private frame = new SymbolTableFrame();
     push() {
         this.frame = new SymbolTableFrame(this.frame);
     }
