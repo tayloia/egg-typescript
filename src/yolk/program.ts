@@ -2,7 +2,6 @@ import { assert } from "./assertion";
 import { Builtins } from "./builtins";
 import { RuntimeException } from "./exception";
 import { FunctionArguments } from "./function";
-import { LinkerException } from "./linker";
 import { ILogger, Logger } from "./logger";
 import { Manifestations } from "./manifestations";
 import { Message } from "./message";
@@ -64,7 +63,7 @@ class Runner implements Program.IRunner {
         this.resolveFail("Identifier not found: '{identifier}'", { identifier });
     }
     resolveFail(message: string, parameters?: Message.Parameters): never {
-        throw new LinkerException(message, parameters);
+        throw new RuntimeException(message, parameters);
     }
     run(): void {
         assert.eq(this.program.modules.length, 1);
