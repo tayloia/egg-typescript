@@ -366,6 +366,9 @@ class Impl implements Program.IResolver {
         }
         const expr = this.compileNode(node.children[0]);
         if (signature.rettype.compatibleType(expr.resolve(this)).isEmpty()) {
+            if (signature.rettype.hasOnly(Type.Primitive.Void)) {
+                this.raise(node.children[0], "Expected no value after 'return' within a 'void' function");
+            }
             this.raise(node, "Incompatible 'return' statement value");
         }
         return new Runtime.Node_StmtReturn(node.location, expr);

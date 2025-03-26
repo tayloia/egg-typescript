@@ -6,6 +6,9 @@ export class Type {
     isEmpty() {
         return this.primitives.size === 0;
     }
+    hasOnly(primitive: Type.Primitive) {
+        return this.primitives.size === 1 && this.primitives.has(primitive);
+    }
     hasPrimitive(primitive: Type.Primitive) {
         return this.primitives.has(primitive);
     }
@@ -44,13 +47,14 @@ export class Type {
         assert(!that.isEmpty());
         const intersection = new Set<Type.Primitive>();
         for (const primitive of that.primitives) {
-            if (!this.hasPrimitive(primitive)) {
-                // TODO Auto-promote 'int' to 'float'
-                if (primitive !== Type.Primitive.Int || !this.hasPrimitive(Type.Primitive.Float)) {
-                    return Type.EMPTY;
-                }
+            // Auto-promote 'int' to 'float'
+            if (this.hasPrimitive(primitive)) {
+                intersection.add(primitive);
+            } else if (primitive === Type.Primitive.Int && this.hasPrimitive(Type.Primitive.Float)) {
+                intersection.add(Type.Primitive.Float);
+            } else {
+                return Type.EMPTY;
             }
-            intersection.add(primitive);
         }
         return new Type(intersection);
     }

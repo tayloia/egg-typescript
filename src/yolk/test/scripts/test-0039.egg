@@ -1,0 +1,4 @@
+void positive(int x) {
+  return x;
+}
+///<COMPILER><ERROR><RESOURCE>(2,10): Expected no value after 'return' within a 'void' function
