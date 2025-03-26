@@ -1,7 +1,11 @@
+import assert from "assert";
 import { Value } from "./value";
 
 export class Type {
     constructor(public primitives: Set<Type.Primitive> = new Set()) {}
+    isEmpty() {
+        return this.primitives.size === 0;
+    }
     hasPrimitive(primitive: Type.Primitive) {
         return this.primitives.has(primitive);
     }
@@ -25,7 +29,32 @@ export class Type {
         set.delete(primitive);
         return new Type(set);
     }
-    compatible(value: Value): Value {
+    getIterable(): Type | undefined {
+        // TODO
+        if (this.hasPrimitive(Type.Primitive.Object)) {
+            return Type.ANYQ;
+        }
+        if (this.hasPrimitive(Type.Primitive.String)) {
+            return Type.STRING;
+        }
+        return undefined;
+    }
+    compatibleType(that: Type): Type {
+        assert(!this.isEmpty());
+        assert(!that.isEmpty());
+        const intersection = new Set<Type.Primitive>();
+        for (const primitive of that.primitives) {
+            if (!this.hasPrimitive(primitive)) {
+                // TODO Auto-promote 'int' to 'float'
+                if (primitive !== Type.Primitive.Int || !this.hasPrimitive(Type.Primitive.Float)) {
+                    return Type.EMPTY;
+                }
+            }
+            intersection.add(primitive);
+        }
+        return new Type(intersection);
+    }
+    compatibleValue(value: Value): Value {
         // Auto-promote 'int' to 'float'
         switch (value.kind) {
             case Value.Kind.Null:
@@ -81,7 +110,7 @@ export namespace Type {
         String = "string",
         Object = "object",
     }
-    export const NONE = new Type(new Set());
+    export const EMPTY = new Type(new Set());
     export const VOID = new Type(new Set([Type.Primitive.Void]));
     export const NULL = new Type(new Set([Type.Primitive.Null]));
     export const BOOL = new Type(new Set([Type.Primitive.Bool]));

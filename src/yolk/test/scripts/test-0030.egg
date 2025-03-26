@@ -10,5 +10,4 @@ for (var i : {}) {
 for (var i : 123) {
   print(i);
 }
-///<RUNTIME><ERROR><RESOURCE>(10,14-16): Value of type 'int' is not iterable in 'for' statement
-//TODO //<COMPILER><ERROR><RESOURCE>(10,14-16): Value of type 'int' is not iterable in 'for' statement
+///<LINKER><ERROR><RESOURCE>(10,14-16): Value of type 'int' is not iterable in 'for' statement

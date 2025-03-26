@@ -2,8 +2,10 @@ import { assert } from "./assertion";
 import { Builtins } from "./builtins";
 import { RuntimeException } from "./exception";
 import { FunctionArguments } from "./function";
+import { LinkerException } from "./linker";
 import { ILogger, Logger } from "./logger";
 import { Manifestations } from "./manifestations";
+import { Message } from "./message";
 import { SymbolFlavour, SymbolTable } from "./symboltable";
 import { Type } from "./type";
 import { Value } from "./value";
@@ -20,6 +22,7 @@ export namespace Program {
     export type Callsite = (runner: IRunner, args: FunctionArguments) => Value;
     export interface IResolver extends ILogger {
         resolveIdentifier(identifier: string): Type;
+        resolveFail(message: string, parameters?: Message.Parameters): never;
     }
     export interface IRunner extends IResolver {
         readonly manifestations: Manifestations;
@@ -45,7 +48,7 @@ class Runner implements Program.IRunner {
         this.manifestations = Manifestations.createDefault();
         this.caught = Value.VOID;
         this.symbols = new SymbolTable();
-        this.symbolBuiltin(new Builtins.Print());
+        this.symbols.builtin(new Builtins.Print());
     }
     manifestations: Manifestations;
     caught: Value;
@@ -55,10 +58,13 @@ class Runner implements Program.IRunner {
     }
     resolveIdentifier(identifier: string): Type {
         const entry = this.symbols.find(identifier);
-        if (!entry) {
-            throw new RuntimeException("Identifier not found in symbol table (resolveIdentifier): '{identifier}'", {identifier});
+        if (entry) {
+            return entry.type;
         }
-        return entry.type;
+        this.resolveFail("Identifier not found: '{identifier}'", { identifier });
+    }
+    resolveFail(message: string, parameters?: Message.Parameters): never {
+        throw new LinkerException(message, parameters);
     }
     run(): void {
         assert.eq(this.program.modules.length, 1);
@@ -70,14 +76,9 @@ class Runner implements Program.IRunner {
     scopePop() {
         this.symbols.pop();
     }
-    symbolBuiltin(builtin: Builtins.Builtin) {
-        if (!this.symbols.add(builtin.definition.signature.name, SymbolFlavour.Builtin, builtin.definition.type, builtin.value)) {
-            throw new RuntimeException("Duplicate built-in definition: '{builtin}'", {builtin:builtin.definition.signature.name});
-        }
-    }
     symbolAdd(symbol: string, flavour: SymbolFlavour, type: Type, value: Value): void {
         if (!value.isVoid()) {
-            const compatible = type.compatible(value);
+            const compatible = type.compatibleValue(value);
             if (compatible.isVoid()) {
                 throw new RuntimeException(`Cannot initialize ${flavour} '{symbol}' of type '{type}' with ${value.describe()}`, {
                     symbol,
@@ -94,7 +95,7 @@ class Runner implements Program.IRunner {
     symbolGet(symbol: string): Value {
         const entry = this.symbols.find(symbol);
         if (entry === undefined) {
-            throw new RuntimeException("Symbol not found in symbol table: '{symbol}'", {symbol});
+            throw new RuntimeException("Unknown identifier: '{symbol}'", {symbol});
         }
         return entry.value;
     }
@@ -109,7 +110,7 @@ class Runner implements Program.IRunner {
             case SymbolFlavour.Function:
                 throw new RuntimeException(`Cannot re-assign ${entry.flavour} value: '{symbol}'`, {symbol});
         }
-        const compatible = entry.type.compatible(value);
+        const compatible = entry.type.compatibleValue(value);
         if (compatible.isVoid()) {
             throw new RuntimeException(`Cannot assign ${value.describe()} to ${entry.flavour} '{symbol}' of type '{type}'`, {
                 symbol,

@@ -80,7 +80,7 @@ export class TestProgram extends TestLogger {
         return Compiler.fromString(this.input, this.source).withLogger(this).compile();
     }
     link(): Program {
-        return new Linker().withModule(this.compile()).link();
+        return new Linker().withLogger(this).withModule(this.compile()).link();
     }
     run(): void {
         this.link().run(this);

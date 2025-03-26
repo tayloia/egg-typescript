@@ -7,11 +7,16 @@ import { Location } from "./location";
 import { ConsoleLogger, Logger } from "./logger";
 import { Message } from "./message";
 import { Program } from "./program";
-import { SymbolFlavour } from "./symboltable";
+import { SymbolFlavour, SymbolTable } from "./symboltable";
 import { Type } from "./type";
 import { Value } from "./value";
 import { ValueMap } from "./valuemap";
 
+export class LinkerException extends Exception {
+    constructor(message: string, parameters?: Message.Parameters) {
+        super(LinkerException.name, Exception.Origin.Linker, message, parameters);
+    }
+}
 class ArrayInitializer {
     constructor(public readonly value: Node, public readonly ellipsis: boolean) {}
 }
@@ -38,7 +43,7 @@ class Outcome {
     }
 }
 
-abstract class Node {
+abstract class Node implements Program.INode {
     constructor(public location: Location) {}
     abstract resolve(resolver: Program.IResolver): Type;
     abstract evaluate(runner: Program.IRunner): Value;
@@ -460,7 +465,7 @@ class Node_StmtIfGuard extends Node {
     }
     execute(runner: Program.IRunner): Outcome {
         const initializer = this.initializer.evaluate(runner);
-        const compatible = this.type.compatible(initializer);
+        const compatible = this.type.compatibleValue(initializer);
         if (!compatible.isVoid()) {
             runner.scopePush();
             try {
@@ -568,7 +573,8 @@ class Node_StmtCatch extends Node {
     }
     execute(runner: Program.IRunner): Outcome {
         const type = this.type.resolve(runner);
-        const exception = type.compatible(runner.caught);
+        assert(!type.isEmpty());
+        const exception = type.compatibleValue(runner.caught);
         if (exception.isVoid()) {
             return Outcome.CONTINUE;
         }
@@ -598,7 +604,12 @@ class Node_ValueVariableGet extends Node {
         super(location);
     }
     resolve(resolver: Program.IResolver): Type {
-        return resolver.resolveIdentifier(this.identifier);
+        try {
+            return resolver.resolveIdentifier(this.identifier);
+        }
+        catch (error) {
+            this.catch(error);
+        }
     }
     evaluate(runner: Program.IRunner): Value {
         try {
@@ -776,7 +787,11 @@ class Node_TypeNullable extends Node {
         super(location);
     }
     resolve(resolver: Program.IResolver): Type {
-        return this.type.resolve(resolver).addPrimitive(Type.Primitive.Null);
+        let type = this.type.resolve(resolver);
+        if (!type.isEmpty()) {
+            type = type.addPrimitive(Type.Primitive.Null);
+        }
+        return type;
     }
     evaluate(runner: Program.IRunner): Value {
         this.unimplemented(runner);
@@ -1031,8 +1046,12 @@ class Module implements Program.IModule {
 }
 
 class Impl implements Program.IResolver {
-    readonly EMPTY = new Node_Empty(new Location("(empty)", 0, 0));
-    constructor(public modules: Module[], public logger: Logger) {}
+    static readonly EMPTY = new Node_Empty(new Location("(empty)", 0, 0));
+    constructor(public modules: Module[], public logger: Logger) {
+        this.symbols = new SymbolTable();
+        this.symbols.builtin(new Builtins.Print());
+    }
+    symbols: SymbolTable;
     linkProgram(): Program {
         return new Program(this.modules);
     }
@@ -1082,8 +1101,7 @@ class Impl implements Program.IResolver {
             case Compiler.Kind.StmtTry:
                 return this.linkStmtTry(node);
             case Compiler.Kind.TargetVariable:
-                assert.eq(node.children.length, 0);
-                return new Node_TargetVariable(node.location, node.value.asString());
+                return this.linkTargetVariable(node);
             case Compiler.Kind.TargetProperty:
                 assert.eq(node.children.length, 2);
                 return new Node_TargetProperty(node.location, this.linkNode(node.children[0]), this.linkNode(node.children[1]));
@@ -1108,7 +1126,7 @@ class Impl implements Program.IResolver {
                 return new Node_ValueCall(node.location, this.linkNodes(node.children));
             case Compiler.Kind.ValueVariableGet:
                 assert.eq(node.children.length, 0);
-                return new Node_ValueVariableGet(node.location, node.value.asString());
+                return this.linkValueVariableGet(node);
             case Compiler.Kind.ValuePropertyGet:
                 assert.ge(node.children.length, 2);
                 return this.linkValuePropertyGet(node);
@@ -1161,6 +1179,16 @@ class Impl implements Program.IResolver {
             return new ObjectInitializer(child.value.asString(), this.linkNode(child.children[0]), false);
         }));
     }
+    linkValueVariableGet(node: Compiler.INode): Node {
+        assert(node.kind === Compiler.Kind.ValueVariableGet);
+        assert.eq(node.children.length, 0);
+        const identifier = node.value.asString();
+        const symbol = this.symbols.find(identifier);
+        if (symbol) {
+            return new Node_ValueVariableGet(node.location, identifier);
+        }
+        throw new LinkerException("Unknown identifier: '{identifier}'", { location: node.location, identifier });
+    }
     linkValuePropertyGet(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.ValuePropertyGet);
         assert.eq(node.children.length, 2);
@@ -1176,59 +1204,94 @@ class Impl implements Program.IResolver {
     linkStmtVariableDefine(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtVariableDefine);
         assert.eq(node.children.length, 2);
+        const identifier = node.value.asString();
         let type: Type;
         let initializer: Node;
         if (node.children[0].kind === Compiler.Kind.TypeInfer) {
             initializer = this.linkNode(node.children[1]);
             type = initializer.resolve(this);
+            assert(!type.isEmpty());
             if (node.children[0].value.getBool()) {
                 // Allow 'var?'
-                type.addPrimitive(Type.Primitive.Null);
+                type = type.addPrimitive(Type.Primitive.Null);
             } else {
                 // Disallow 'var?'
-                type.removePrimitive(Type.Primitive.Null);
+                type = type.removePrimitive(Type.Primitive.Null);
             }
         } else {
             type = this.linkNode(node.children[0]).resolve(this);
+            assert(!type.isEmpty());
             initializer = this.linkNode(node.children[1]);
         }
-        return new Node_StmtVariableDefine(initializer.location, node.value.asString(), type, initializer);
+        const itype = initializer.resolve(this);
+        assert(!type.isEmpty());
+        if (type.compatibleType(itype).isEmpty()) {
+            throw new LinkerException(`Cannot initialize variable '{identifier}' of type '${type.describe()}' with a value of type '${itype.describe()}'`, { location: initializer.location, identifier });
+        }
+        this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
+        return new Node_StmtVariableDefine(initializer.location, identifier, type, initializer);
     }
     linkStmtFunctionDefine(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtFunctionDefine);
         assert.eq(node.children.length, 3);
+        const fname = node.value.asString();
         const rettype = this.linkNode(node.children[0]).resolve(this);
+        assert(!rettype.isEmpty());
         assert(node.children[1].kind === Compiler.Kind.FunctionParameters);
-        const parameters = node.children[1].children.map(parameter => {
-            assert.eq(parameter.kind, Compiler.Kind.FunctionParameter);
-            assert.eq(parameter.children.length, 1);
-            return new FunctionParameter(parameter.value.asString(), this.linkNode(parameter.children[0]).resolve(this));
-        });
-        const block = this.linkNode(node.children[2]);
-        const signature = new FunctionSignature(node.value.asString(), node.location, rettype, parameters);
-        return new Node_StmtFunctionDefine(node.location, signature, block);
+        this.symbols.add(fname, SymbolFlavour.Function, Type.OBJECT, Value.VOID);
+        this.symbols.push();
+        try {
+            const parameters = node.children[1].children.map(parameter => {
+                assert.eq(parameter.kind, Compiler.Kind.FunctionParameter);
+                assert.eq(parameter.children.length, 1);
+                const pname = parameter.value.asString();
+                const ptype = this.linkNode(parameter.children[0]).resolve(this);
+                assert(!ptype.isEmpty());
+                this.symbols.add(pname, SymbolFlavour.Argument, ptype, Value.VOID);
+                return new FunctionParameter(pname, ptype);
+            });
+            const signature = new FunctionSignature(fname, node.location, rettype, parameters);
+            const block = this.linkNode(node.children[2]);
+            return new Node_StmtFunctionDefine(node.location, signature, block);
+        }
+        finally {
+            this.symbols.pop();
+        }
     }
     linkStmtForeach(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtForeach);
         assert.eq(node.children.length, 3);
-        let type: Type;
-        let expr: Node;
+        let type, expr;
         if (node.children[0].kind === Compiler.Kind.TypeInfer) {
             expr = this.linkNode(node.children[1]);
-            type = expr.resolve(this);
+            const resolved = expr.resolve(this);
+            assert(!resolved.isEmpty());
+            const elements = resolved.getIterable();
+            if (elements === undefined) {
+                throw new LinkerException(`Value of type '${resolved.describe()}' is not iterable in 'for' statement`, { location: expr.location });
+            }
             if (node.children[0].value.getBool()) {
                 // Allow 'var?'
-                type.addPrimitive(Type.Primitive.Null);
+                type = elements.addPrimitive(Type.Primitive.Null);
             } else {
                 // Disallow 'var?'
-                type.removePrimitive(Type.Primitive.Null);
+                type = elements.removePrimitive(Type.Primitive.Null);
             }
         } else {
             type = this.linkNode(node.children[0]).resolve(this);
+            assert(!type.isEmpty());
             expr = this.linkNode(node.children[1]);
         }
-        const block = this.linkNode(node.children[2]);
-        return new Node_StmtForeach(node.location, node.value.asString(), type, expr, block);
+        const identifier = node.value.asString();
+        this.symbols.push();
+        try {
+            this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
+            const block = this.linkNode(node.children[2]);
+            return new Node_StmtForeach(node.location, identifier, type, expr, block);
+        }
+        finally {
+            this.symbols.pop();
+        }
     }
     linkStmtForloop(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtForloop);
@@ -1245,7 +1308,7 @@ class Impl implements Program.IResolver {
         const condition = this.linkNode(node.children[0]);
         const ifBlock = this.linkNode(node.children[1]);
         if (node.children.length === 2) {
-            return new Node_StmtIf(node.location, condition, ifBlock, this.EMPTY);
+            return new Node_StmtIf(node.location, condition, ifBlock, Impl.EMPTY);
         }
         assert.eq(node.children.length, 3);
         const elseBlock = this.linkNode(node.children[2]);
@@ -1254,15 +1317,25 @@ class Impl implements Program.IResolver {
     linkStmtIfGuard(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtIfGuard);
         assert.ge(node.children.length, 3);
+        const identifier = node.value.asString();
         const type = this.linkNode(node.children[0]).resolve(this);
+        assert(!type.isEmpty());
         const initializer = this.linkNode(node.children[1]);
-        const ifBlock = this.linkNode(node.children[2]);
+        let ifBlock;
+        this.symbols.push();
+        try {
+            this.symbols.add(identifier, SymbolFlavour.Guard, type, Value.VOID);
+            ifBlock = this.linkNode(node.children[2]);
+        }
+        finally {
+            this.symbols.pop();
+        }
         if (node.children.length === 3) {
-            return new Node_StmtIfGuard(node.location, node.value.asString(), type, initializer, ifBlock, this.EMPTY);
+            return new Node_StmtIfGuard(node.location, identifier, type, initializer, ifBlock, Impl.EMPTY);
         }
         assert.eq(node.children.length, 4);
         const elseBlock = this.linkNode(node.children[3]);
-        return new Node_StmtIfGuard(node.location, node.value.asString(), type, initializer, ifBlock, elseBlock);
+        return new Node_StmtIfGuard(node.location, identifier, type, initializer, ifBlock, elseBlock);
     }
     linkStmtReturn(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtReturn);
@@ -1281,18 +1354,43 @@ class Impl implements Program.IResolver {
             return new Node_StmtTry(node.location, tryBlock, catchClauses, finallyClause);
         } else {
             const catchClauses = node.children.slice(1).map(child => this.linkStmtCatch(child));
-            return new Node_StmtTry(node.location, tryBlock, catchClauses, this.EMPTY);
+            return new Node_StmtTry(node.location, tryBlock, catchClauses, Impl.EMPTY);
         }
     }
     linkStmtCatch(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtCatch);
         assert.eq(node.children.length, 2);
+        const identifier = node.value.asString();
         const type = this.linkNode(node.children[0]);
-        const block = this.linkNode(node.children[1]);
-        return new Node_StmtCatch(node.location, node.value.asString(), type, block);
+        this.symbols.push();
+        try {
+            this.symbols.add(identifier, SymbolFlavour.Exception, type.resolve(this), Value.VOID);
+            const block = this.linkNode(node.children[1]);
+            return new Node_StmtCatch(node.location, identifier, type, block);
+        }
+        finally {
+            this.symbols.pop();
+        }
     }
-    resolveIdentifier(identifier_: string): Type {
-        return Type.ANYQ; // TODO
+    linkTargetVariable(node: Compiler.INode): Node {
+        assert(node.kind === Compiler.Kind.TargetVariable);
+        assert.eq(node.children.length, 0);
+        const identifier = node.value.asString();
+        const symbol = this.symbols.find(identifier);
+        if (symbol === undefined) {
+            throw new LinkerException("Unknown identifier: '{identifier}'", { location: node.location, identifier });
+        }
+        return new Node_TargetVariable(node.location, identifier);
+    }
+    resolveIdentifier(identifier: string): Type {
+        const symbol = this.symbols.find(identifier);
+        if (symbol) {
+            return symbol.type;
+        }
+        this.resolveFail("Unknown identifier: '{identifier}'", { identifier });
+    }
+    resolveFail(message: string, parameters?: Message.Parameters): never {
+        throw new LinkerException(message, parameters);
     }
     log(entry: Logger.Entry): void {
         this.logger.log(entry);
@@ -1314,11 +1412,5 @@ export class Linker {
         const impl = new Impl(this.modules, this.logger ?? new ConsoleLogger());
         this.modules.push(impl.linkModule(module));
         return this;
-    }
-}
-
-export class LinkerException extends Exception {
-    constructor(message: string, parameters?: Message.Parameters) {
-        super(LinkerException.name, Exception.Origin.Linker, message, parameters);
     }
 }

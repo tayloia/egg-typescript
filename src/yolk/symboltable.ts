@@ -1,4 +1,5 @@
 import { assert } from "./assertion";
+import { Builtins } from "./builtins";
 import { Type } from "./type";
 import { Value } from "./value";
 
@@ -51,5 +52,10 @@ export class SymbolTable {
             frame = frame.chain;
         }
         return undefined;
+    }
+    builtin(builtin: Builtins.Builtin, name = builtin.definition.signature.name) {
+        if (!this.add(name, SymbolFlavour.Builtin, builtin.definition.type, builtin.value)) {
+            assert.fail("Duplicate built-in definition: '{builtin}'", { builtin: name });
+        }
     }
 }

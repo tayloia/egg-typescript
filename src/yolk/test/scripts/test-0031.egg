@@ -1,3 +1,2 @@
 string a = 123;
-//TODO //<COMPILER><ERROR><RESOURCE>(1,12-14): Cannot initialize variable 'a' of type 'string' with a value of type 'int'
-///<RUNTIME><ERROR><RESOURCE>(1,12-14): Cannot initialize variable 'a' of type 'string' with a value of type 'int'
+///<LINKER><ERROR><RESOURCE>(1,12-14): Cannot initialize variable 'a' of type 'string' with a value of type 'int'
