@@ -428,6 +428,28 @@ class Node_StmtIf extends Node {
     }
 }
 
+class Node_StmtIfElse extends Node {
+    constructor(location: Location, public condition: Node, public ifBlock: Node, public elseBlock: Node) {
+        super(location);
+    }
+    resolve(resolver: Program.IResolver): Type {
+        this.unimplemented(resolver);
+    }
+    evaluate(runner: Program.IRunner): Value {
+        this.unimplemented(runner);
+    }
+    execute(runner: Program.IRunner): Outcome {
+        const condition = this.condition.evaluate(runner);
+        if (condition.asBoolean()) {
+            return this.ifBlock.execute(runner);
+        }
+        return this.elseBlock.execute(runner);
+    }
+    modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
+    }
+}
+
 class Node_StmtReturn extends Node {
     constructor(location: Location, public expr: Node | undefined) {
         super(location);
@@ -710,6 +732,24 @@ class Node_TypeLiteral_Any extends Node_TypeLiteral {
     }
     resolve(resolver_: Program.IResolver): Type {
         return Type.ANY;
+    }
+}
+
+class Node_TypeNullable extends Node {
+    constructor(location: Location, public type: Node) {
+        super(location);
+    }
+    resolve(resolver: Program.IResolver): Type {
+        return this.type.resolve(resolver).addPrimitive(Type.Primitive.Null);
+    }
+    evaluate(runner: Program.IRunner): Value {
+        this.unimplemented(runner);
+    }
+    execute(runner: Program.IRunner): Outcome {
+        this.unimplemented(runner);
+    }
+    modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+        this.unimplemented(runner);
     }
 }
 
@@ -1014,6 +1054,9 @@ class Impl implements Program.IResolver {
             case Compiler.Kind.TypeKeyword:
                 assert.eq(node.children.length, 0);
                 return this.linkTypeKeyword(node);
+            case Compiler.Kind.TypeNullable:
+                assert.eq(node.children.length, 1);
+                return new Node_TypeNullable(node.location, this.linkNode(node.children[0]));
             case Compiler.Kind.ValueScalar:
                 assert.eq(node.children.length, 0);
                 return new Node_ValueScalar(node.location, node.value);
@@ -1119,7 +1162,8 @@ class Impl implements Program.IResolver {
         assert(node.children[1].kind === Compiler.Kind.FunctionParameters);
         const parameters = node.children[1].children.map(parameter => {
             assert.eq(parameter.kind, Compiler.Kind.FunctionParameter);
-            return new FunctionParameter(parameter.value.asString(), this.linkNode(node.children[0]).resolve(this));
+            assert.eq(parameter.children.length, 1);
+            return new FunctionParameter(parameter.value.asString(), this.linkNode(parameter.children[0]).resolve(this));
         });
         const block = this.linkNode(node.children[2]);
         const signature = new FunctionSignature(node.value.asString(), node.location, rettype, parameters);
@@ -1158,10 +1202,15 @@ class Impl implements Program.IResolver {
     }
     linkStmtIf(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtIf);
-        assert.eq(node.children.length, 2);
+        assert.ge(node.children.length, 2);
         const condition = this.linkNode(node.children[0]);
-        const block = this.linkNode(node.children[1]);
-        return new Node_StmtIf(node.location, condition, block);
+        const ifBlock = this.linkNode(node.children[1]);
+        if (node.children.length === 2) {
+            return new Node_StmtIf(node.location, condition, ifBlock);
+        }
+        assert.eq(node.children.length, 3);
+        const elseBlock = this.linkNode(node.children[2]);
+        return new Node_StmtIfElse(node.location, condition, ifBlock, elseBlock);
     }
     linkStmtReturn(node: Compiler.INode): Node {
         assert(node.kind === Compiler.Kind.StmtReturn);

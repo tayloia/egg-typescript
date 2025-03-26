@@ -113,6 +113,9 @@ class Node implements Parser.INode {
     static createTypeKeyword(location: Location, keyword: string): Node {
         return new Node(location, Parser.Kind.TypeKeyword, [], Value.fromString(keyword));
     }
+    static createTypeNullable(location: Location, type: Node): Node {
+        return new Node(location, Parser.Kind.TypeNullable, [type]);
+    }
     static createVariableDefinition(location: Location, identifier: string, type: Node, initializer: Node): Node {
         return new Node(location, Parser.Kind.Variable, [type, initializer], Value.fromString(identifier));
     }
@@ -128,8 +131,11 @@ class Node implements Parser.INode {
     static createStatementForloop(location: Location, initialization: Node, condition: Node, advance: Node, block: Node): Node {
         return new Node(location, Parser.Kind.StatementForloop, [initialization, condition, advance, block]);
     }
-    static createStatementIf(location: Location, condition: Node, block: Node): Node {
-        return new Node(location, Parser.Kind.StatementIf, [condition, block]);
+    static createStatementIf(location: Location, condition: Node, ifBlock: Node, elseBlock?: Node): Node {
+        if (elseBlock) {
+            return new Node(location, Parser.Kind.StatementIf, [condition, ifBlock, elseBlock]);
+        }
+        return new Node(location, Parser.Kind.StatementIf, [condition, ifBlock]);
     }
     static createStatementReturn(location: Location, expr: Node): Node {
         return new Node(location, Parser.Kind.StatementReturn, [expr]);
@@ -368,16 +374,7 @@ class Impl extends Logger {
         if (this.peekKeyword(lookahead) !== "if" || this.peekPunctuation(lookahead + 1) !== "(") {
             return undefined;
         }
-        const condition = this.parseExpression(lookahead + 2) ?? this.unexpected("Expected condition after '(' in 'if' statement", lookahead + 2, "(");
-        if (this.peekPunctuation(condition.lookahead) !== ")") {
-            this.unexpected("Expected ')' after condition in 'for' statement", condition.lookahead, ")");
-        }
-        if (this.peekPunctuation(condition.lookahead + 1) !== "{") {
-            this.unexpected("Expected '{' after ')' in 'if' statement", condition.lookahead + 1, "{");
-        }
-        const block = this.expectStatementBlock(condition.lookahead + 1, "Expected statement within 'if' block");
-        const location = this.peekLocation(lookahead, block.lookahead);
-        return new Success(Node.createStatementIf(location, condition.node, block.node), block.lookahead);
+        return this.expectStatementIf(lookahead);
     }
     private parseStatementReturn(lookahead: number): Success | undefined {
         if (this.peekKeyword(lookahead) !== "return") {
@@ -405,6 +402,35 @@ class Impl extends Logger {
         } while (this.peekKeyword(next) === "catch");
         const location = this.peekLocation(lookahead, next);
         return new Success(Node.createStatementTry(location, block.node, catches), next);
+    }
+    private expectStatementIf(lookahead: number): Success {
+        assert(this.peekKeyword(lookahead) === "if" && this.peekPunctuation(lookahead + 1) === "(");
+        const condition = this.parseExpression(lookahead + 2) ?? this.unexpected("Expected condition after '(' in 'if' statement", lookahead + 2, "(");
+        if (this.peekPunctuation(condition.lookahead) !== ")") {
+            this.unexpected("Expected ')' after condition in 'for' statement", condition.lookahead, ")");
+        }
+        if (this.peekPunctuation(condition.lookahead + 1) !== "{") {
+            this.unexpected("Expected '{' after ')' in 'if' statement", condition.lookahead + 1, "{");
+        }
+        const ifBlock = this.expectStatementBlock(condition.lookahead + 1, "Expected statement within 'if' block");
+        if (this.peekKeyword(ifBlock.lookahead) !== "else") {
+            const location = this.peekLocation(lookahead, ifBlock.lookahead);
+            return new Success(Node.createStatementIf(location, condition.node, ifBlock.node), ifBlock.lookahead);
+        }
+        let elseBlock;
+        if (this.peekKeyword(ifBlock.lookahead + 1) === "if") {
+            if (this.peekPunctuation(ifBlock.lookahead + 2) !== "(") {
+                this.unexpected("Expected '(' after 'if' in 'else' clause of 'if' statement", ifBlock.lookahead + 2, "(");
+            }
+            elseBlock = this.expectStatementIf(ifBlock.lookahead + 1);
+        } else {
+            if (this.peekPunctuation(ifBlock.lookahead + 1) !== "{") {
+                this.unexpected("Expected '{' after 'else' in 'if' statement", ifBlock.lookahead + 1, "{");
+            }
+            elseBlock = this.expectStatementBlock(ifBlock.lookahead + 1, "Expected statement within 'else' block");
+        }
+        const location = this.peekLocation(lookahead, elseBlock.lookahead);
+        return new Success(Node.createStatementIf(location, condition.node, ifBlock.node, elseBlock.node), elseBlock.lookahead);
     }
     private expectStatementCatch(lookahead: number): Success {
         assert.eq(this.peekKeyword(lookahead), "catch");
@@ -510,11 +536,64 @@ class Impl extends Logger {
         return this.parseTypeKeyword(lookahead);
     }
     private parseTypeExpression(lookahead: number): Success | undefined {
+        return this.parseTypeExpressionBinary(lookahead);
+    }
+    private parseTypeExpressionBinary(lookahead: number): Success | undefined {
+        const lhs = this.parseTypeExpressionUnary(lookahead);
+        if (lhs) {
+            for (const op of ["|"]) {
+                const expr = this.parseTypeExpressionBinaryOperator(lhs, op);
+                if (expr) {
+                    return expr;
+                }
+            }
+        }
+        return lhs;
+    }
+    private parseTypeExpressionBinaryOperator(lhs: Success, op: string): Success | undefined {
+        if (this.isPunctuation(lhs.lookahead, op)) {
+            const rhs = this.parseTypeExpression(lhs.lookahead + op.length);
+            if (rhs) {
+                return new Success(Node.createOperatorBinary(lhs.node, rhs.node, op), rhs.lookahead);
+            }
+        }
+        return undefined;
+    }
+    private parseTypeExpressionUnary(lookahead: number): Success | undefined {
+        return this.parseTypeExpressionPrimary(lookahead);
+    }
+    private parseTypeExpressionPrimary(lookahead: number): Success | undefined {
+        let front = this.parseTypeExpressionPrimaryFront(lookahead);
+        if (front) {
+            let back = this.parseTypeExpressionPrimaryBack(front);
+            while (back) {
+                front = back;
+                back = this.parseTypeExpressionPrimaryBack(front);
+            }
+        }
+        return front;
+    }
+    private parseTypeExpressionPrimaryFront(lookahead: number): Success | undefined {
         return this.parseTypeKeyword(lookahead);
+    }
+    private parseTypeExpressionPrimaryBack(front: Success): Success | undefined {
+        let back: Success;
+        switch (this.peekPunctuation(front.lookahead)) {
+            case ".":
+                back = this.parseIdentifier(front.lookahead + 1) ?? this.unexpected("Expected property name after '.'", front.lookahead + 1);
+                return new Success(Node.createPropertyAccess(front.node, back.node), back.lookahead);
+            case "?":
+                if (this.isPunctuation(front.lookahead, "??")) {
+                    return undefined;
+                }
+                return new Success(Node.createTypeNullable(front.node.location.span(this.peekLocation(front.lookahead + 1)), front.node), front.lookahead + 1);
+        }
+        return undefined;
     }
     private parseTypeKeyword(lookahead: number): Success | undefined {
         const keyword = this.peekKeyword(lookahead);
         switch (keyword) {
+            case "void":
             case "bool":
             case "int":
             case "float":
@@ -544,7 +623,7 @@ class Impl extends Logger {
     private parseValueExpressionBinary(lookahead: number): Success | undefined {
         const lhs = this.parseValueExpressionUnary(lookahead);
         if (lhs) {
-            for (const op of ["+","-","*","/","!=","==","<=","<",">=",">"]) {
+            for (const op of ["+","-","*","/","!=","==","<=","<",">=",">","&&","||","??","&","|","^"]) {
                 const expr = this.parseValueExpressionBinaryOperator(lhs, op);
                 if (expr) {
                     return expr;
@@ -599,7 +678,7 @@ class Impl extends Logger {
             case "(":
                 back = this.expectFunctionArguments(front.lookahead);
                 return new Success(Node.createFunctionCall(front.node, back.node), back.lookahead);
-            }
+        }
         return undefined;
     }
     private parseIdentifier(lookahead: number): Success | undefined {
@@ -820,6 +899,7 @@ export namespace Parser {
         Function = "function",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
+        TypeNullable = "type-nullable",
         StatementBlock = "stmt-block",
         StatementForeach = "stmt-foreach",
         StatementForloop = "stmt-forloop",

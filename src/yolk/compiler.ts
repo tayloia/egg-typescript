@@ -41,8 +41,11 @@ class Impl extends Logger {
             case Parser.Kind.StatementBlock:
                 return new Node(pnode.location, Compiler.Kind.StmtBlock, pnode.children.map(child => this.compileStmt(child)));
             case Parser.Kind.StatementIf:
-                assert.eq(pnode.children.length, 2);
-                return new Node(pnode.location, Compiler.Kind.StmtIf, [this.compileExpr(pnode.children[0]), this.compileStmt(pnode.children[1])]);
+                if (pnode.children.length === 2) {
+                    return new Node(pnode.location, Compiler.Kind.StmtIf, [this.compileExpr(pnode.children[0]), this.compileStmt(pnode.children[1])]);
+                }
+                assert.eq(pnode.children.length, 3);
+                return new Node(pnode.location, Compiler.Kind.StmtIf, [this.compileExpr(pnode.children[0]), this.compileStmt(pnode.children[1]), this.compileStmt(pnode.children[2])]);
             case Parser.Kind.StatementReturn:
                 assert.eq(pnode.children.length, 1);
                 return new Node(pnode.location, Compiler.Kind.StmtReturn, [this.compileExpr(pnode.children[0])]);
@@ -134,8 +137,9 @@ class Impl extends Logger {
             case Parser.Kind.TypeKeyword:
                 assert.eq(pnode.children.length, 0);
                 return new Node(pnode.location, Compiler.Kind.TypeKeyword, [], pnode.value);
-            case undefined:
-                break;
+            case Parser.Kind.TypeNullable:
+                assert.eq(pnode.children.length, 1);
+                return new Node(pnode.location, Compiler.Kind.TypeNullable, [this.compileType(pnode.children[0])]);
         }
         assert.fail("Unknown node kind in compileType: {kind}", {kind:pnode.kind});
     }
@@ -273,6 +277,7 @@ export namespace Compiler {
         TargetIndex = "target-index",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
+        TypeNullable = "type-nullable",
         ValueNamed = "value-named",
         ValueScalar = "value-scalar",
         ValueArray = "value-array",
