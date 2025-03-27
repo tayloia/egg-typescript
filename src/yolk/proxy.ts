@@ -277,9 +277,6 @@ abstract class ProxyVanillaBase extends ProxyBase {
 }
 
 export class ProxyVanillaObject extends ProxyVanillaBase {
-    constructor(entries: ValueMap) {
-        super(entries);
-    }
     getRuntimeType(): Type {
         return Type.OBJECT;
     }

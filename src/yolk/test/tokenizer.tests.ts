@@ -17,9 +17,10 @@ describe("Tokenizer", function() {
     function tokenizeOne(input: string): Tokenizer.Token {
         const tokenizer = Tokenizer.fromString(input);
         const token = tokenizer.take();
-        expect(token?.raw).equals(input);
+        expect(token);
+        expect(token.raw).equals(input);
         expect(tokenizer.take().kind).equals(Tokenizer.Kind.EOF);
-        return token!;
+        return token;
     }
     function tokenizeBad(input: string): () => unknown {
         return () => Tokenizer.fromString(input).take();

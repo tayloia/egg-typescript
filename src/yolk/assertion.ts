@@ -33,9 +33,11 @@ assert.pass = function(): void {
 }
 
 assert.fail = function(message?: string, parameters?: Message.Parameters): never {
-    const caller = parameters?.caller as { name: string };
-    if (caller) {
-        parameters!.caller = extractCaller(caller);
+    if (parameters) {
+        const caller = parameters.caller as { name: string };
+        if (caller) {
+            parameters.caller = extractCaller(caller);
+        }
     }
     throw new AssertionException(message ?? "Assertion failure", parameters);
 }

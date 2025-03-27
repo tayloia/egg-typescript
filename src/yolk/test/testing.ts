@@ -10,7 +10,7 @@ import { assert } from "../assertion";
 
 export namespace Testing {
     function basePath(mocha: Mocha.Context | Mocha.Suite, depth: number): string {
-        const path = ("test" in mocha) ? mocha.test!.file! : mocha.file!;
+        const path = ("test" in mocha && mocha.test) ? mocha.test.file : mocha.file;
         return path.split(/[/\\]/).slice(-1 - depth, -1).join("/");
     }
     export function makePath(mocha: Mocha.Context | Mocha.Suite, name: string, depth: number = 3): string {

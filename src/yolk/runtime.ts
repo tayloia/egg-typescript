@@ -60,9 +60,6 @@ export namespace Runtime {
     }
 
     export class Node_Empty extends Node {
-        constructor(location: Location) {
-            super(location);
-        }
         resolve(resolver: Program.IResolver): Type {
             this.unimplemented(resolver);
         }
@@ -695,9 +692,6 @@ export namespace Runtime {
     }
 
     export class Node_ManifestationVoid extends Node {
-        constructor(location: Location) {
-            super(location);
-        }
         resolve(resolver_: Program.IResolver): Type {
             return Type.VOID;
         }
@@ -713,9 +707,6 @@ export namespace Runtime {
     }
 
     export class Node_ManifestationBool extends Node {
-        constructor(location: Location) {
-            super(location);
-        }
         resolve(resolver_: Program.IResolver): Type {
             return Type.BOOL;
         }
@@ -731,9 +722,6 @@ export namespace Runtime {
     }
 
     export class Node_ManifestationInt extends Node {
-        constructor(location: Location) {
-            super(location);
-        }
         resolve(resolver_: Program.IResolver): Type {
             return Type.INT;
         }
@@ -749,9 +737,6 @@ export namespace Runtime {
     }
 
     export class Node_ManifestationFloat extends Node {
-        constructor(location: Location) {
-            super(location);
-        }
         resolve(resolver_: Program.IResolver): Type {
             return Type.FLOAT;
         }
@@ -767,9 +752,6 @@ export namespace Runtime {
     }
 
     export class Node_ManifestationString extends Node {
-        constructor(location: Location) {
-            super(location);
-        }
         resolve(resolver: Program.IResolver): Type {
             return resolver.manifestations.STRING.getRuntimeType();
         }
@@ -785,9 +767,6 @@ export namespace Runtime {
     }
 
     export class Node_ManifestationObject extends Node {
-        constructor(location: Location) {
-            super(location);
-        }
         resolve(resolver: Program.IResolver): Type {
             return resolver.manifestations.OBJECT.getRuntimeType();
         }
@@ -803,9 +782,6 @@ export namespace Runtime {
     }
 
     export class Node_ManifestationAny extends Node {
-        constructor(location: Location) {
-            super(location);
-        }
         resolve(resolver_: Program.IResolver): Type {
             return Type.ANY;
         }
@@ -821,9 +797,6 @@ export namespace Runtime {
     }
 
     export class Node_ManifestationType extends Node {
-        constructor(location: Location) {
-            super(location);
-        }
         resolve(resolver: Program.IResolver): Type {
             return resolver.manifestations.TYPE.getRuntimeType();
         }

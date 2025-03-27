@@ -156,7 +156,6 @@ export namespace Type {
         public constructor(public readonly elementtype: Type) {}
     }
     export abstract class Shape implements IFormattable {
-        public constructor() {}
         callable?: Callable;
         iterable?: Iterable;
         abstract format(options?: FormatOptions): string;
