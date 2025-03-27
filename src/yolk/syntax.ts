@@ -194,18 +194,18 @@ class Impl extends Logger {
                 return new Node(pnode.location, Syntax.Kind.ValueArray, pnode.children.map(element => this.syntaxExpr(element)));
             case Parser.Kind.LiteralObject:
                 return new Node(pnode.location, Syntax.Kind.ValueObject, pnode.children.map(element => this.syntaxExpr(element)));
-            case Parser.Kind.TypeKeyword:
+            case Parser.Kind.TypeManifestation:
                 assert.eq(pnode.children.length, 0);
-                return new Node(pnode.location, Syntax.Kind.TypeKeyword, [], pnode.value);
+                return new Node(pnode.location, Syntax.Kind.TypeManifestation, [], pnode.value);
             case Parser.Kind.PropertyAccess:
                 assert.eq(pnode.children.length, 2);
-                return this.syntaxExprPropertyGet(pnode.children[0], pnode.children[1]);
+                return this.syntaxExprPropertyGet(pnode.location, pnode.children[0], pnode.children[1]);
             case Parser.Kind.IndexAccess:
                 assert.eq(pnode.children.length, 2);
-                return this.syntaxExprIndexGet(pnode.children[0], pnode.children[1]);
+                return this.syntaxExprIndexGet(pnode.location, pnode.children[0], pnode.children[1]);
             case Parser.Kind.FunctionCall:
                 assert.eq(pnode.children.length, 2);
-                return this.syntaxExprFunctionCall(pnode.children[0], pnode.children[1]);
+                return this.syntaxExprFunctionCall(pnode.location, pnode.children[0], pnode.children[1]);
             case Parser.Kind.OperatorBinary:
                 assert.eq(pnode.children.length, 2);
                 return this.syntaxExprBinary(pnode.children[0], pnode.value.asString(), pnode.children[1]);
@@ -215,20 +215,17 @@ class Impl extends Logger {
         }
         assert.fail("Unknown node kind in syntaxExpr: {kind}", {kind:pnode.kind});
     }
-    syntaxExprFunctionCall(callee: Parser.INode, args: Parser.INode): Node {
+    syntaxExprFunctionCall(location: Location, callee: Parser.INode, args: Parser.INode): Node {
         const children = [this.syntaxExpr(callee), ...this.syntaxExprArguments(args)];
-        const location = children[0].location.span(children[children.length - 1].location);
         return new Node(location, Syntax.Kind.ValueCall, children);
     }
-    syntaxExprIndexGet(instance: Parser.INode, index: Parser.INode): Node {
+    syntaxExprIndexGet(location: Location, instance: Parser.INode, index: Parser.INode): Node {
         const children = [this.syntaxExpr(instance), this.syntaxExpr(index)];
-        const location = children[0].location.span(children[1].location);
         return new Node(location, Syntax.Kind.ValueIndexGet, children);
     }
-    syntaxExprPropertyGet(instance: Parser.INode, property: Parser.INode): Node {
+    syntaxExprPropertyGet(location: Location, instance: Parser.INode, property: Parser.INode): Node {
         assert.eq(property.kind, Parser.Kind.Identifier);
         const children = [this.syntaxExpr(instance), this.syntaxPropertyIdentifier(property)];
-        const location = children[0].location.span(children[1].location);
         return new Node(location, Syntax.Kind.ValuePropertyGet, children);
     }
     syntaxExprBinary(plhs: Parser.INode, op: string, prhs: Parser.INode): Node {
@@ -296,6 +293,7 @@ export namespace Syntax {
         TargetIndex = "target-index",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
+        TypeManifestation = "type-manifestation",
         TypeNullable = "type-nullable",
         ValueNamed = "value-named",
         ValueScalar = "value-scalar",

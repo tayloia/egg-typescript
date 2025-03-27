@@ -8,8 +8,12 @@ import { Message } from "./message";
 import { ValueMap } from "./valuemap";
 import { FunctionArguments, FunctionDefinition } from "./function";
 import { Location } from "./location";
+import { Type } from "./type";
 
 abstract class ProxyBase implements Value.IProxy {
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
     getProperty(property: string): Value {
         this.unsupported("Properties are", {property});
     }

@@ -384,7 +384,7 @@ export namespace Runtime {
                 }
                 return Outcome.THROUGH;
             }
-            this.expr.raise("Value of type '{type}' is not iterable in 'for' statement", { type: this.type.describe() });
+            this.expr.raise(`Value of type '${this.type}' is not iterable in 'for' statement`);
         }
         modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
             this.unimplemented(runner);
@@ -693,9 +693,12 @@ export namespace Runtime {
         }
     }
 
-    abstract class Node_TypeLiteral extends Node {
+    export class Node_ManifestationVoid extends Node {
         constructor(location: Location) {
             super(location);
+        }
+        resolve(resolver_: Program.IResolver): Type {
+            return Type.VOID;
         }
         evaluate(runner: Program.IRunner): Value {
             this.unimplemented(runner);
@@ -708,72 +711,147 @@ export namespace Runtime {
         }
     }
 
-    export class Node_TypeLiteral_Void extends Node_TypeLiteral {
-        constructor(location: Location) {
-            super(location);
-        }
-        resolve(resolver_: Program.IResolver): Type {
-            return Type.VOID;
-        }
-    }
-
-    export class Node_TypeLiteral_Bool extends Node_TypeLiteral {
+    export class Node_ManifestationBool extends Node {
         constructor(location: Location) {
             super(location);
         }
         resolve(resolver_: Program.IResolver): Type {
             return Type.BOOL;
         }
+        evaluate(runner: Program.IRunner): Value {
+            this.unimplemented(runner);
+        }
+        execute(runner: Program.IRunner): Outcome {
+            this.unimplemented(runner);
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
+        }
     }
 
-    export class Node_TypeLiteral_Int extends Node_TypeLiteral {
+    export class Node_ManifestationInt extends Node {
         constructor(location: Location) {
             super(location);
         }
         resolve(resolver_: Program.IResolver): Type {
             return Type.INT;
         }
+        evaluate(runner: Program.IRunner): Value {
+            this.unimplemented(runner);
+        }
+        execute(runner: Program.IRunner): Outcome {
+            this.unimplemented(runner);
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
+        }
     }
 
-    export class Node_TypeLiteral_Float extends Node_TypeLiteral {
+    export class Node_ManifestationFloat extends Node {
         constructor(location: Location) {
             super(location);
         }
         resolve(resolver_: Program.IResolver): Type {
             return Type.FLOAT;
         }
+        evaluate(runner: Program.IRunner): Value {
+            this.unimplemented(runner);
+        }
+        execute(runner: Program.IRunner): Outcome {
+            this.unimplemented(runner);
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
+        }
     }
 
-    export class Node_TypeLiteral_String extends Node_TypeLiteral {
+    export class Node_ManifestationString extends Node {
         constructor(location: Location) {
             super(location);
         }
-        evaluate(runner: Program.IRunner): Value {
-            return Value.fromProxy(runner.manifestations.STRING);
+        resolve(resolver: Program.IResolver): Type {
+            return resolver.manifestations.STRING.getRuntimeType();
         }
-        resolve(resolver_: Program.IResolver): Type {
-            return Type.STRING;
+        evaluate(runner: Program.IRunner): Value {
+            return Value.fromProxy(runner.manifestations.STRING.getProxy());
+        }
+        execute(runner: Program.IRunner): Outcome {
+            this.unimplemented(runner);
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
         }
     }
 
-    export class Node_TypeLiteral_Object extends Node_TypeLiteral {
+    export class Node_ManifestationObject extends Node {
         constructor(location: Location) {
             super(location);
         }
-        evaluate(runner: Program.IRunner): Value {
-            return Value.fromProxy(runner.manifestations.OBJECT);
+        resolve(resolver: Program.IResolver): Type {
+            return resolver.manifestations.OBJECT.getRuntimeType();
         }
-        resolve(resolver_: Program.IResolver): Type {
-            return Type.OBJECT;
+        evaluate(runner: Program.IRunner): Value {
+            return Value.fromProxy(runner.manifestations.OBJECT.getProxy());
+        }
+        execute(runner: Program.IRunner): Outcome {
+            this.unimplemented(runner);
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
         }
     }
 
-    export class Node_TypeLiteral_Any extends Node_TypeLiteral {
+    export class Node_ManifestationAny extends Node {
         constructor(location: Location) {
             super(location);
         }
         resolve(resolver_: Program.IResolver): Type {
             return Type.ANY;
+        }
+        evaluate(runner: Program.IRunner): Value {
+            this.unimplemented(runner);
+        }
+        execute(runner: Program.IRunner): Outcome {
+            this.unimplemented(runner);
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
+        }
+    }
+
+    export class Node_ManifestationType extends Node {
+        constructor(location: Location) {
+            super(location);
+        }
+        resolve(resolver: Program.IResolver): Type {
+            return resolver.manifestations.TYPE.getRuntimeType();
+        }
+        evaluate(runner: Program.IRunner): Value {
+            return Value.fromProxy(runner.manifestations.TYPE.getProxy());
+        }
+        execute(runner: Program.IRunner): Outcome {
+            this.unimplemented(runner);
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
+        }
+    }
+
+    export class Node_TypePrimitive extends Node {
+        constructor(location: Location, public type: Type) {
+            super(location);
+        }
+        resolve(resolver_: Program.IResolver): Type {
+            return this.type;
+        }
+        evaluate(runner: Program.IRunner): Value {
+            this.unimplemented(runner);
+        }
+        execute(runner: Program.IRunner): Outcome {
+            this.unimplemented(runner);
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
         }
     }
 
@@ -969,9 +1047,14 @@ export namespace Runtime {
         constructor(location: Location, public children: Node[]) {
             super(location);
         }
-        resolve(resolver_: Program.IResolver): Type {
-            // TODO
-            return Type.STRING;
+        resolve(resolver: Program.IResolver): Type {
+            const callee = this.children[0].resolve(resolver);
+            assert(!callee.isEmpty());
+            const callables = callee.getCallables();
+            if (callables.length > 0) {
+                return Type.union(...callables.map(i => i.rettype));
+            }
+            this.raise(`Cannot call ${callee.describe()}`);
         }
         evaluate(runner: Program.IRunner): Value {
             const callee = this.children[0].evaluate(runner);

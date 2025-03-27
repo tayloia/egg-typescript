@@ -117,6 +117,9 @@ class Node implements Parser.INode {
     static createTypeKeyword(location: Location, keyword: string): Node {
         return new Node(location, Parser.Kind.TypeKeyword, [], Value.fromString(keyword));
     }
+    static createTypeManifestation(location: Location, keyword: string): Node {
+        return new Node(location, Parser.Kind.TypeManifestation, [], Value.fromString(keyword));
+    }
     static createTypeNullable(location: Location, type: Node): Node {
         return new Node(location, Parser.Kind.TypeNullable, [type]);
     }
@@ -631,6 +634,21 @@ class Impl extends Logger {
         }
         return undefined;
     }
+    private parseTypeManifestation(lookahead: number): Success | undefined {
+        const keyword = this.peekKeyword(lookahead);
+        switch (keyword) {
+            case "void":
+            case "bool":
+            case "int":
+            case "float":
+            case "string":
+            case "object":
+            case "any":
+            case "type":
+                return new Success(Node.createTypeManifestation(this.peekLocation(lookahead), keyword), lookahead + 1);
+        }
+        return undefined;
+    }
     private parseGuardExpression(lookahead: number, guard: string): Success | undefined {
         const type = this.parseTypeExpressionOrVar(lookahead);
         if (type) {
@@ -703,7 +721,7 @@ class Impl extends Logger {
             ?? this.parseStringLiteral(lookahead)
             ?? this.parseArrayLiteral(lookahead)
             ?? this.parseObjectLiteral(lookahead)
-            ?? this.parseTypeKeyword(lookahead)
+            ?? this.parseTypeManifestation(lookahead)
             ?? this.parseIdentifier(lookahead);
     }
     private parseValueExpressionPrimaryBack(front: Success): Success | undefined {
@@ -943,6 +961,7 @@ export namespace Parser {
         Function = "function",
         TypeInfer = "type-infer",
         TypeKeyword = "type-keyword",
+        TypeManifestation = "type-manifestation",
         TypeNullable = "type-nullable",
         StatementBlock = "stmt-block",
         StatementForeach = "stmt-foreach",

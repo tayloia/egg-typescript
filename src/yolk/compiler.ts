@@ -11,6 +11,7 @@ import { Runtime } from "./runtime";
 import { SymbolFlavour, SymbolTable } from "./symboltable";
 import { Type } from "./type";
 import { Value } from "./value";
+import { Manifestations } from "./manifestations";
 
 class Module implements Program.IModule {
     constructor(public readonly root: Program.INode, public readonly source: string) {}
@@ -54,10 +55,12 @@ class Scope {
 class Impl implements Program.IResolver {
     static readonly EMPTY = new Runtime.Node_Empty(new Location("(empty)", 0, 0));
     constructor(public modules: Module[], public logger: Logger) {
+        this.manifestations = Manifestations.createDefault();
         this.scope = new Scope();
         this.symbols = new SymbolTable();
         this.symbols.builtin(new Builtins.Print());
     }
+    manifestations: Manifestations;
     scope: Scope;
     symbols: SymbolTable;
     compileProgram(): Program {
@@ -119,6 +122,9 @@ class Impl implements Program.IResolver {
             case Syntax.Kind.TypeKeyword:
                 assert.eq(node.children.length, 0);
                 return this.compileTypeKeyword(node);
+            case Syntax.Kind.TypeManifestation:
+                assert.eq(node.children.length, 0);
+                return this.compileTypeManifestation(node);
             case Syntax.Kind.TypeNullable:
                 assert.eq(node.children.length, 1);
                 return new Runtime.Node_TypeNullable(node.location, this.compileNode(node.children[0]));
@@ -159,21 +165,45 @@ class Impl implements Program.IResolver {
         const keyword = node.value.asString();
         switch (keyword) {
             case "void":
-                return new Runtime.Node_TypeLiteral_Void(node.location);
+                return new Runtime.Node_TypePrimitive(node.location, Type.VOID);
             case "bool":
-                return new Runtime.Node_TypeLiteral_Bool(node.location);
+                return new Runtime.Node_TypePrimitive(node.location, Type.BOOL);
             case "int":
-                return new Runtime.Node_TypeLiteral_Int(node.location);
+                return new Runtime.Node_TypePrimitive(node.location, Type.INT);
             case "float":
-                return new Runtime.Node_TypeLiteral_Float(node.location);
+                return new Runtime.Node_TypePrimitive(node.location, Type.FLOAT);
             case "string":
-                return new Runtime.Node_TypeLiteral_String(node.location);
+                return new Runtime.Node_TypePrimitive(node.location, Type.STRING);
             case "object":
-                return new Runtime.Node_TypeLiteral_Object(node.location);
+                return new Runtime.Node_TypePrimitive(node.location, Type.OBJECT);
             case "any":
-                return new Runtime.Node_TypeLiteral_Any(node.location);
+                return new Runtime.Node_TypePrimitive(node.location, Type.ANY);
         }
         assert.fail("Unknown keyword in compileTypeKeyword: {keyword}", {keyword});
+    }
+    compileTypeManifestation(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.TypeManifestation);
+        assert.eq(node.children.length, 0);
+        const keyword = node.value.asString();
+        switch (keyword) {
+            case "void":
+                return new Runtime.Node_ManifestationVoid(node.location);
+            case "bool":
+                return new Runtime.Node_ManifestationBool(node.location);
+            case "int":
+                return new Runtime.Node_ManifestationInt(node.location);
+            case "float":
+                return new Runtime.Node_ManifestationFloat(node.location);
+            case "string":
+                return new Runtime.Node_ManifestationString(node.location);
+            case "object":
+                return new Runtime.Node_ManifestationObject(node.location);
+            case "any":
+                return new Runtime.Node_ManifestationAny(node.location);
+            case "type":
+                return new Runtime.Node_ManifestationType(node.location);
+        }
+        assert.fail("Unknown keyword in compileTypeManifestation: {keyword}", {keyword});
     }
     compileValueArray(node: Syntax.INode): Runtime.Node {
         return new Runtime.Node_ValueArray(node.location, node.children.map(child => {
@@ -234,7 +264,7 @@ class Impl implements Program.IResolver {
         const itype = initializer.resolve(this);
         assert(!type.isEmpty());
         if (type.compatibleType(itype).isEmpty()) {
-            this.raise(node.children[1], `Cannot initialize variable '{identifier}' of type '${type.describe()}' with a value of type '${itype.describe()}'`, { identifier });
+            this.raise(node.children[1], `Cannot initialize variable '{identifier}' of type '${type}' with ${itype.describe()}`, { identifier });
         }
         this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
         return new Runtime.Node_StmtVariableDefine(initializer.location, identifier, type, initializer);
@@ -280,16 +310,17 @@ class Impl implements Program.IResolver {
             expr = this.compileNode(node.children[1]);
             const resolved = expr.resolve(this);
             assert(!resolved.isEmpty());
-            const elements = resolved.getIterable();
-            if (elements === undefined) {
-                this.raise(node.children[1], `Value of type '${resolved.describe()}' is not iterable in 'for' statement`);
+            const iterables = resolved.getIterables();
+            if (iterables.length === 0) {
+                this.raise(node.children[1], `Value of type '${resolved}' is not iterable in 'for' statement`);
             }
+            type = Type.union(...iterables.map(i => i.elementtype));
             if (node.children[0].value.getBool()) {
                 // Allow 'var?'
-                type = elements.addPrimitive(Type.Primitive.Null);
+                type = type.addPrimitive(Type.Primitive.Null);
             } else {
                 // Disallow 'var?'
-                type = elements.removePrimitive(Type.Primitive.Null);
+                type = type.removePrimitive(Type.Primitive.Null);
             }
         } else {
             type = this.compileNode(node.children[0]).resolve(this);
@@ -362,7 +393,7 @@ class Impl implements Program.IResolver {
             if (signature.rettype.hasVoid()) {
                 return new Runtime.Node_StmtReturn(node.location);
             }
-            this.raise(node, `Expected 'return' statement with a value of type '${signature.rettype.describe()}'`);
+            this.raise(node, `Expected 'return' statement with ${signature.rettype.describe()}`);
         }
         const expr = this.compileNode(node.children[0]);
         if (signature.rettype.compatibleType(expr.resolve(this)).isEmpty()) {

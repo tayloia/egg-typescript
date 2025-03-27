@@ -2,23 +2,35 @@ import { assert } from "./assertion";
 import { RuntimeException } from "./exception";
 import { FunctionArguments } from "./function";
 import { Program } from "./program";
+import { Type } from "./type";
 import { ToStringOptions, Value } from "./value";
 
+export interface IManifestation {
+    getRuntimeType(): Type;
+    getProxy(): Value.IProxy;
+}
+
 export abstract class Manifestations {
-    abstract readonly STRING: Value.IProxy;
-    abstract readonly OBJECT: Value.IProxy;
+    abstract readonly STRING: IManifestation;
+    abstract readonly OBJECT: IManifestation;
+    abstract readonly TYPE: IManifestation;
     static createDefault(): Manifestations {
         return new ManifestationsImpl();
     }
 }
 
 class ManifestationsImpl implements Manifestations {
-    STRING: Value.IProxy = new ManifestationString();
-    OBJECT: Value.IProxy = new ManifestationObject();
+    STRING = new ManifestationString();
+    OBJECT = new ManifestationObject();
+    TYPE = new ManifestationType();
 }
 
-class ManifestationBase implements Value.IProxy {
+abstract class ManifestationBase implements IManifestation, Value.IProxy {
     constructor(public name: string, public proxies?: Map<string, Value.IProxy>) {}
+    abstract getRuntimeType(): Type;
+    getProxy(): Value.IProxy {
+        return this;
+    }
     getProperty(property: string): Value {
         const found = this.proxies?.get(property);
         if (found) {
@@ -75,6 +87,9 @@ class ManifestationString extends ManifestationBase {
         super("string", new Map([
         ]));
     }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
     invoke(runner_: Program.IRunner, args: FunctionArguments): Value {
         const text = args.arguments.map(arg => arg.toString()).join("");
         return Value.fromString(text);
@@ -87,6 +102,9 @@ class ManifestationObject extends ManifestationBase {
             [ "property", new ManifestationObjectProperty() ]
         ]));
     }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
 }
 
 class ManifestationObjectProperty extends ManifestationBase {
@@ -98,11 +116,17 @@ class ManifestationObjectProperty extends ManifestationBase {
             [ "del", new ManifestationObjectPropertyDel() ],
         ]));
     }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
 }
 
 class ManifestationObjectPropertyGet extends ManifestationBase {
     constructor() {
         super("object.property.get");
+    }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
     }
 }
 
@@ -110,11 +134,17 @@ class ManifestationObjectPropertySet extends ManifestationBase {
     constructor() {
         super("object.property.set");
     }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
 }
 
 class ManifestationObjectPropertyMut extends ManifestationBase {
     constructor() {
         super("object.property.mut");
+    }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
     }
 }
 
@@ -122,10 +152,38 @@ class ManifestationObjectPropertyDel extends ManifestationBase {
     constructor() {
         super("object.property.del");
     }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
     invoke(runner_: Program.IRunner, args: FunctionArguments): Value {
         args.expect(2);
         const proxy = args.expectProxy(0);
         const property = args.expectString(1);
         return proxy.delProperty(property);
+    }
+}
+
+class ManifestationType extends ManifestationBase {
+    constructor() {
+        super("type", new Map([
+            [ "of", new ManifestationTypeOf() ]
+        ]));
+    }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
+}
+
+class ManifestationTypeOf extends ManifestationBase {
+    constructor() {
+        super("type.of");
+    }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
+    invoke(runner_: Program.IRunner, args: FunctionArguments): Value {
+        args.expect(1);
+        const value = args.arguments[0];
+        return Value.fromString(value.getRuntimeType().toString());
     }
 }

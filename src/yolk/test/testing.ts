@@ -114,16 +114,18 @@ export class TestProgram extends TestLogger {
                 const actual = makeActual(logged++);
                 console.log(actual);
                 if (actual === undefined) {
+                    console.log(this.output);
                     Testing.fail(`Missing script output: '${expected}'`, actual, expected, makeStack(line));
                 }
                 if (actual !== expected) {
+                    console.log(this.output);
                     Testing.fail(`Expected ${JSON.stringify(expected)}, but got ${JSON.stringify(actual)}`, actual, expected, makeStack(line));
                 }
             }
         }
         if (logged !== this.logged.length) {
+            console.log(this.output);
             const actual = makeActual(logged++);
-            console.log(actual);
             Testing.fail(`Extraneous script output: '${actual}'`, actual, undefined, makeStack(line));
         }
     }

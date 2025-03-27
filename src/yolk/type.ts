@@ -2,7 +2,7 @@ import assert from "assert";
 import { Value } from "./value";
 
 export class Type {
-    constructor(public primitives: Set<Type.Primitive> = new Set()) {}
+    constructor(public primitives: Set<Type.Primitive> = new Set(), public shapes: Set<Type.Shape> = new Set()) {}
     isEmpty() {
         return this.primitives.size === 0;
     }
@@ -32,15 +32,22 @@ export class Type {
         set.delete(primitive);
         return new Type(set);
     }
-    getIterable(): Type | undefined {
+    getCallables(): Type.Callable[] {
         // TODO
         if (this.hasPrimitive(Type.Primitive.Object)) {
-            return Type.ANYQ;
+            return [new Type.Callable(Type.ANYQ)];
+        }
+        return [];
+    }
+    getIterables(): Type.Iterable[] {
+        // TODO
+        if (this.hasPrimitive(Type.Primitive.Object)) {
+            return [new Type.Iterable(Type.ANYQ)];
         }
         if (this.hasPrimitive(Type.Primitive.String)) {
-            return Type.STRING;
+            return [new Type.Iterable(Type.STRING)];
         }
-        return undefined;
+        return [];
     }
     compatibleType(that: Type): Type {
         assert(!this.isEmpty());
@@ -52,8 +59,6 @@ export class Type {
                 intersection.add(primitive);
             } else if (primitive === Type.Primitive.Int && this.hasPrimitive(Type.Primitive.Float)) {
                 intersection.add(Type.Primitive.Float);
-            } else {
-                return Type.EMPTY;
             }
         }
         return new Type(intersection);
@@ -102,7 +107,14 @@ export class Type {
         // TODO
         return Type.INT;
     }
+    static union(...types: Type[]): Type {
+        assert(types.length === 1); // TODO
+        return types[0];
+    }
     describe(): string {
+        return `a value of type '${this}'`;
+    }
+    toString(): string {
         const joined = Array.from(this.primitives.values()).join("|");
         return joined || "unknown";
     }
@@ -117,6 +129,17 @@ export namespace Type {
         Float = "float",
         String = "string",
         Object = "object",
+    }
+    export class Callable {
+        public constructor(public readonly rettype: Type) {}
+    }
+    export class Iterable {
+        public constructor(public readonly elementtype: Type) {}
+    }
+    export class Shape {
+        public constructor() {}
+        callable?: Callable;
+        iterable?: Iterable;
     }
     export const EMPTY = new Type(new Set());
     export const VOID = new Type(new Set([Type.Primitive.Void]));

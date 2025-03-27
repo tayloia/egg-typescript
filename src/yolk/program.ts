@@ -19,10 +19,10 @@ export class Program {
 export namespace Program {
     export type Callsite = (runner: IRunner, args: FunctionArguments) => Value;
     export interface IResolver extends ILogger {
+        manifestations: Manifestations;
         resolveIdentifier(identifier: string): Type;
     }
     export interface IRunner extends IResolver {
-        readonly manifestations: Manifestations;
         caught: Value;
         scopePush(): void;
         scopePop(): void;
@@ -74,9 +74,8 @@ class Runner implements Program.IRunner {
         if (!value.isVoid()) {
             const compatible = type.compatibleValue(value);
             if (compatible.isVoid()) {
-                throw new RuntimeException(`Cannot initialize ${flavour} '{symbol}' of type '{type}' with ${value.describe()}`, {
+                throw new RuntimeException(`Cannot initialize ${flavour} '{symbol}' of type '${type}' with ${value.describe()}`, {
                     symbol,
-                    type: type.describe(),
                     value: value,
                 });
             }
@@ -106,9 +105,8 @@ class Runner implements Program.IRunner {
         }
         const compatible = entry.type.compatibleValue(value);
         if (compatible.isVoid()) {
-            throw new RuntimeException(`Cannot assign ${value.describe()} to ${entry.flavour} '{symbol}' of type '{type}'`, {
+            throw new RuntimeException(`Cannot assign ${value.describe()} to ${entry.flavour} '{symbol}' of type '${entry.type}'`, {
                 symbol,
-                type: entry.type.describe(),
                 value: value,
             });
         }

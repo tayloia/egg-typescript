@@ -6,6 +6,7 @@ import { ProxyRuntimeException, ProxyVanillaArray, ProxyVanillaFunction, ProxyVa
 import { Program } from "./program";
 import { ValueMap } from "./valuemap";
 import { FunctionArguments, FunctionDefinition } from "./function";
+import { Type } from "./type";
 
 export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.IProxy;
 
@@ -170,6 +171,24 @@ export class Value {
     }
     asString(): string {
         return this.getUnicode().toString();
+    }
+    getRuntimeType(): Type {
+        switch (this.kind) {
+            case Value.Kind.Void:
+                return Type.VOID;
+            case Value.Kind.Null:
+                return Type.NULL;
+            case Value.Kind.Bool:
+                return Type.BOOL;
+            case Value.Kind.Int:
+                return Type.INT;
+            case Value.Kind.Float:
+                return Type.FLOAT;
+            case Value.Kind.String:
+                return Type.STRING;
+            case Value.Kind.Proxy:
+                return this.getProxy().getRuntimeType();
+        }
     }
     describe(): string {
         switch (this.kind) {
@@ -611,6 +630,7 @@ export namespace Value {
         }
     }
     export interface IProxy {
+        getRuntimeType(): Type;
         getProperty(property: string): Value;
         setProperty(property: string, value: Value): Value;
         mutProperty(property: string, op: string, lazy: () => Value): Value;
