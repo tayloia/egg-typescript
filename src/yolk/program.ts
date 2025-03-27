@@ -74,7 +74,7 @@ class Runner implements Program.IRunner {
         if (!value.isVoid()) {
             const compatible = type.compatibleValue(value);
             if (compatible.isVoid()) {
-                throw new RuntimeException(`Cannot initialize ${flavour} '{symbol}' of type '${type}' with ${value.describe()}`, {
+                throw new RuntimeException(`Cannot initialize ${flavour} '{symbol}' of type '${type.format()}' with ${value.describe()}`, {
                     symbol,
                     value: value,
                 });

@@ -1,5 +1,6 @@
 import { assert } from "./assertion";
 import { RuntimeException } from "./exception";
+import { FormatOptions, IFormattable } from "./format";
 import { Location } from "./location";
 import { Message } from "./message";
 import { Program } from "./program";
@@ -66,17 +67,20 @@ export class FunctionParameter {
     constructor(public readonly name: string, public readonly type: Type, public readonly defval?: Value) {}
 }
 
-export class FunctionSignature {
+export class FunctionSignature implements IFormattable {
     constructor(public readonly name: string, public readonly location: Location, public readonly rettype: Type, public parameters: FunctionParameter[]) {}
+    format(options?: FormatOptions): string {
+        return `${this.rettype.format(options)}(${this.parameters.map(p => p.type.format(options)).join(",")})`;
+    }
 }
 
-export class FunctionDefinition {
+export class FunctionDefinition implements IFormattable {
     constructor(public readonly signature: FunctionSignature, public readonly invoke: Program.Callsite) {
         this.type = Type.OBJECT;
     }
     readonly type: Type;
-    toString(): string {
-        return `${this.signature.name}()`;
+    format(options?: FormatOptions): string {
+        return this.signature.format(options);
     }
     describe(): string {
         return `function '${this.signature.name}()'`;

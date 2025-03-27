@@ -1,28 +1,23 @@
-import assert from "assert";
+import { assert } from "./assertion";
+import { FormatOptions, IFormattable } from "./format";
 import { Value } from "./value";
 
-export class Type {
-    constructor(public primitives: Set<Type.Primitive> = new Set(), public shapes: Set<Type.Shape> = new Set()) {}
+export class Type implements IFormattable {
+    private constructor(private primitives: Set<Type.Primitive>, private shapes: Set<Type.Shape>) {}
     isEmpty() {
-        return this.primitives.size === 0;
+        return this.primitives.size === 0 && this.shapes.size === 0;
     }
     hasOnly(primitive: Type.Primitive) {
-        return this.primitives.size === 1 && this.primitives.has(primitive);
+        return this.primitives.size === 1 && this.primitives.has(primitive) && this.shapes.size === 0;
     }
     hasPrimitive(primitive: Type.Primitive) {
         return this.primitives.has(primitive);
-    }
-    hasVoid() {
-        return this.primitives.has(Type.Primitive.Void);
-    }
-    hasNull() {
-        return this.primitives.has(Type.Primitive.Null);
     }
     addPrimitive(primitive: Type.Primitive): Type {
         if (this.hasPrimitive(primitive)) {
             return this;
         }
-        return new Type(new Set(this.primitives).add(primitive));
+        return new Type(new Set(this.primitives).add(primitive), new Set(this.shapes));
     }
     removePrimitive(primitive: Type.Primitive): Type {
         if (!this.hasPrimitive(primitive)) {
@@ -30,7 +25,7 @@ export class Type {
         }
         const set = new Set(this.primitives);
         set.delete(primitive);
-        return new Type(set);
+        return new Type(set, new Set(this.shapes));
     }
     getCallables(): Type.Callable[] {
         // TODO
@@ -61,7 +56,7 @@ export class Type {
                 intersection.add(Type.Primitive.Float);
             }
         }
-        return new Type(intersection);
+        return new Type(intersection, new Set(this.shapes));
     }
     compatibleValue(value: Value): Value {
         // Auto-promote 'int' to 'float'
@@ -96,7 +91,7 @@ export class Type {
                 break;
             case Value.Kind.Proxy:
                 // TODO
-                if (this.hasPrimitive(Type.Primitive.Object)) {
+                if (this.hasPrimitive(Type.Primitive.Object) || this.shapes.size > 0) {
                     return value;
                 }
                 break;
@@ -111,12 +106,36 @@ export class Type {
         assert(types.length === 1); // TODO
         return types[0];
     }
-    describe(): string {
-        return `a value of type '${this}'`;
+    static fromPrimitives(...primitives: Type.Primitive[]): Type {
+        return new Type(new Set(primitives), new Set());
     }
-    toString(): string {
-        const joined = Array.from(this.primitives.values()).join("|");
-        return joined || "unknown";
+    static fromShape(shape: Type.Shape): Type {
+        return new Type(new Set(), new Set([shape]));
+    }
+    describeValue(): string {
+        return `a value of type '${this.format()}'`;
+    }
+    format(options?: FormatOptions): string {
+        if (this.hasOnly(Type.Primitive.Null)) {
+            return "null";
+        }
+        const head = [...this.primitives].filter(x => x !== Type.Primitive.Null).join("|").replace("bool|int|float|string|object", "any");
+        const tail = this.hasPrimitive(Type.Primitive.Null) ? "?" : "";
+        if (this.shapes.size === 0) {
+            if (head === "") {
+                return "empty";
+            }
+            return head + tail;
+        }
+        if (this.shapes.size === 1) {
+            if (head === "") {
+                return [...this.shapes][0].format(options) + tail;
+            }
+        }
+        if (head === "") {
+            return [...this.shapes].map(x => `(${x.format()})`).join("|") + tail;
+        }
+        return head + "|" + [...this.shapes].map(x => `(${x.format()})`).join("|") + tail;
     }
 }
 
@@ -136,19 +155,20 @@ export namespace Type {
     export class Iterable {
         public constructor(public readonly elementtype: Type) {}
     }
-    export class Shape {
+    export abstract class Shape implements IFormattable {
         public constructor() {}
         callable?: Callable;
         iterable?: Iterable;
+        abstract format(options?: FormatOptions): string;
     }
-    export const EMPTY = new Type(new Set());
-    export const VOID = new Type(new Set([Type.Primitive.Void]));
-    export const NULL = new Type(new Set([Type.Primitive.Null]));
-    export const BOOL = new Type(new Set([Type.Primitive.Bool]));
-    export const INT = new Type(new Set([Type.Primitive.Int]));
-    export const FLOAT = new Type(new Set([Type.Primitive.Float]));
-    export const STRING = new Type(new Set([Type.Primitive.String]));
-    export const OBJECT = new Type(new Set([Type.Primitive.Object]));
-    export const ANY = new Type(new Set([Type.Primitive.Bool, Type.Primitive.Int, Type.Primitive.Float, Type.Primitive.String, Type.Primitive.Object]));
-    export const ANYQ = new Type(new Set([Type.Primitive.Null, Type.Primitive.Bool, Type.Primitive.Int, Type.Primitive.Float, Type.Primitive.String, Type.Primitive.Object]));
+    export const EMPTY = Type.fromPrimitives();
+    export const VOID = Type.fromPrimitives(Type.Primitive.Void);
+    export const NULL = Type.fromPrimitives(Type.Primitive.Null);
+    export const BOOL = Type.fromPrimitives(Type.Primitive.Bool);
+    export const INT = Type.fromPrimitives(Type.Primitive.Int);
+    export const FLOAT = Type.fromPrimitives(Type.Primitive.Float);
+    export const STRING = Type.fromPrimitives(Type.Primitive.String);
+    export const OBJECT = Type.fromPrimitives(Type.Primitive.Object);
+    export const ANY = Type.fromPrimitives(Type.Primitive.Bool, Type.Primitive.Int, Type.Primitive.Float, Type.Primitive.String, Type.Primitive.Object);
+    export const ANYQ = Type.fromPrimitives(Type.Primitive.Null, Type.Primitive.Bool, Type.Primitive.Int, Type.Primitive.Float, Type.Primitive.String, Type.Primitive.Object);
 }

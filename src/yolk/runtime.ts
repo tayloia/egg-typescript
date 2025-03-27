@@ -255,7 +255,8 @@ export namespace Runtime {
                 }
             });
             try {
-                runner.symbolAdd(this.signature.name, SymbolFlavour.Function, definition.type, Value.fromVanillaFunction(definition));
+                const value = Value.fromVanillaFunction(definition);
+                runner.symbolAdd(this.signature.name, SymbolFlavour.Function, value.getRuntimeType(), value);
             }
             catch (error) {
                 this.catch(error);
@@ -384,7 +385,7 @@ export namespace Runtime {
                 }
                 return Outcome.THROUGH;
             }
-            this.expr.raise(`Value of type '${this.type}' is not iterable in 'for' statement`);
+            this.expr.raise(`Value of type '${this.type.format()}' is not iterable in 'for' statement`);
         }
         modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
             this.unimplemented(runner);
@@ -1054,7 +1055,7 @@ export namespace Runtime {
             if (callables.length > 0) {
                 return Type.union(...callables.map(i => i.rettype));
             }
-            this.raise(`Cannot call ${callee.describe()}`);
+            this.raise(`Cannot call ${callee.describeValue()}`);
         }
         evaluate(runner: Program.IRunner): Value {
             const callee = this.children[0].evaluate(runner);

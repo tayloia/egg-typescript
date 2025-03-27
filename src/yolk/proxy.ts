@@ -2,18 +2,26 @@ import { inspect } from "util";
 
 import { assert } from "./assertion";
 import { RuntimeException } from "./exception";
-import { ToStringOptions, Value } from "./value";
+import { Value } from "./value";
 import { Program } from "./program";
 import { Message } from "./message";
 import { ValueMap } from "./valuemap";
 import { FunctionArguments, FunctionDefinition } from "./function";
 import { Location } from "./location";
 import { Type } from "./type";
+import { FormatOptions } from "./format";
+
+class ProxyShape extends Type.Shape {
+    constructor(private name: string) {
+        super();
+    }
+    format(): string {
+        return this.name;
+    }
+}
 
 abstract class ProxyBase implements Value.IProxy {
-    getRuntimeType(): Type {
-        return Type.OBJECT;
-    }
+    abstract getRuntimeType(): Type;
     getProperty(property: string): Value {
         this.unsupported("Properties are", {property});
     }
@@ -53,7 +61,10 @@ abstract class ProxyBase implements Value.IProxy {
     toDebug(): string {
         return this.toString();
     }
-    abstract toString(): string;
+    toString(): string {
+        return this.format();
+    }
+    abstract format(options?: FormatOptions): string;
     abstract describe(): string;
     protected unknown(property: string, parameters?: Message.Parameters): never {
         throw new RuntimeException(`Unknown property '{property}' for ${this.describe()}`, { ...parameters, property });
@@ -67,7 +78,10 @@ export class ProxyStringMethod extends ProxyBase {
     constructor(private method: string, public invoke: Program.Callsite) {
         super();
     }
-    toString(): string {
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
+    format(options_?: FormatOptions): string {
         return "[" + this.method + "]";
     }
     describe(): string {
@@ -80,6 +94,9 @@ abstract class ProxyImmutableObject extends ProxyBase {
         super();
     }
     protected map = new Map(this.fields);
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
     getProperty(property: string): Value {
         const value = this.map.get(property);
         if (value === undefined) {
@@ -99,11 +116,9 @@ abstract class ProxyImmutableObject extends ProxyBase {
     toUnderlying(): unknown {
         return this;
     }
-    toString(): string {
-        const options: ToStringOptions = {
-            quoteString: "\"",
-        }
-        return "{" + this.fields.map(([key, value]) => key.toString() + ":" + value.toString(options)).join(",") + "}";
+    format(options?: FormatOptions): string {
+        const inner: FormatOptions = { ...options, quoteString: "\"" };
+        return "{" + this.fields.map(([key, value]) => key + ":" + value.format(inner)).join(",") + "}";
     }
     describe(): string {
         return "a key-value pair";
@@ -131,7 +146,7 @@ export class ProxyRuntimeException extends ProxyImmutableObject {
     toUnderlying(): unknown {
         return this.exception;
     }
-    toString(): string {
+    format(options_?: FormatOptions): string {
         return this.exception.format(true);
     }
     describe(): string {
@@ -167,6 +182,9 @@ export class ProxyRuntimeException extends ProxyImmutableObject {
 export class ProxyVanillaArray extends ProxyBase {
     constructor(private elements: Value[]) {
         super();
+    }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
     }
     getProperty(property: string): Value {
         switch (property) {
@@ -206,11 +224,9 @@ export class ProxyVanillaArray extends ProxyBase {
     toUnderlying(): unknown {
         return this.elements;
     }
-    toString(): string {
-        const options: ToStringOptions = {
-            quoteString: "\"",
-        }
-        return "[" + this.elements.map(element => element.toString(options)).join(",") + "]";
+    format(options?: FormatOptions): string {
+        const inner: FormatOptions = { ...options, quoteString: "\"" };
+        return "[" + this.elements.map(element => element.format(inner)).join(",") + "]";
     }
     describe(): string {
         return "an array value";
@@ -225,17 +241,14 @@ export class ProxyVanillaArray extends ProxyBase {
     }
 }
 
-export class ProxyVanillaObject extends ProxyBase {
+abstract class ProxyVanillaBase extends ProxyBase {
     constructor(protected entries: ValueMap) {
         super();
     }
     getProperty(property: string): Value {
         const key = Value.fromString(property);
         const value = this.entries.get(key);
-        if (value === undefined) {
-            throw new RuntimeException("Unknown property for type 'ProxyVanillaObject': '{property}'", {property});
-        }
-        return value;
+        return value ?? Value.VOID;
     }
     setProperty(property: string, value: Value): Value {
         const key = Value.fromString(property);
@@ -261,23 +274,36 @@ export class ProxyVanillaObject extends ProxyBase {
             return Value.VOID;
         };
     }
+}
+
+export class ProxyVanillaObject extends ProxyVanillaBase {
+    constructor(entries: ValueMap) {
+        super(entries);
+    }
+    getRuntimeType(): Type {
+        return Type.OBJECT;
+    }
     toUnderlying(): unknown {
         return this.entries;
     }
-    toString(): string {
-        const options: ToStringOptions = {
-            quoteString: "\"",
-        }
-        return "{" + this.entries.chronological(kv => kv.key.toString() + ":" + kv.value.toString(options)).join(",") + "}";
+    format(options?: FormatOptions): string {
+        const inner: FormatOptions = { ...options, quoteString: "\"" };
+        return "{" + this.entries.chronological(kv => kv.key.format(options) + ":" + kv.value.format(inner)).join(",") + "}";
     }
     describe(): string {
-        return "a value of type 'object'";
+        return this.getRuntimeType().describeValue();
     }
 }
 
-export class ProxyVanillaFunction extends ProxyVanillaObject {
-    constructor(private definition: FunctionDefinition, entries: ValueMap) {
-        super(entries);
+export class ProxyVanillaFunction extends ProxyVanillaBase {
+    constructor(private definition: FunctionDefinition) {
+        super(new ValueMap());
+        const shape = new ProxyShape(definition.format());
+        this.type = Type.fromShape(shape);
+    }
+    type: Type;
+    getRuntimeType(): Type {
+        return this.type;
     }
     invoke(runner: Program.IRunner, args: FunctionArguments): Value {
         return this.definition.invoke(runner, args);
@@ -285,8 +311,8 @@ export class ProxyVanillaFunction extends ProxyVanillaObject {
     toUnderlying(): unknown {
         return this.definition;
     }
-    toString(): string {
-        return this.definition.toString();
+    format(options?: FormatOptions): string {
+        return this.definition.format(options);
     }
     describe(): string {
         return this.definition.describe();

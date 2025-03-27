@@ -7,6 +7,7 @@ import { Program } from "./program";
 import { ValueMap } from "./valuemap";
 import { FunctionArguments, FunctionDefinition } from "./function";
 import { Type } from "./type";
+import { FormatOptions, IFormattable } from "./format";
 
 export type ValueUnderlying = null | Value.Bool | Value.Int | Value.Float | Value.Unicode | Value.IProxy;
 
@@ -107,18 +108,17 @@ function compareArithmetic(lhs: Value, op: string, rhs: Value, ci: CompareInt, c
     );
 }
 
-export class ToStringOptions {
-    quoteString?: string;
-}
-
-export class Value {
+export class Value implements IFormattable {
     private constructor(private underlying: ValueUnderlying, private _kind: Value.Kind) {}
     get kind() {
         return this._kind;
     }
-    toString(options?: ToStringOptions) {
+    toString(): string {
+        return this.format();
+    }
+    format(options?: FormatOptions): string {
         if (this.underlying !== null) {
-            return this.underlying.toString(options);
+            return this.underlying.format(options);
         }
         switch (this.kind) {
             case Value.Kind.Void:
@@ -325,8 +325,8 @@ export class Value {
     static fromVanillaObject(elements: ValueMap) {
         return Value.fromProxy(new ProxyVanillaObject(elements));
     }
-    static fromVanillaFunction(definition: FunctionDefinition, elements?: ValueMap) {
-        return Value.fromProxy(new ProxyVanillaFunction(definition, elements ?? new ValueMap()));
+    static fromVanillaFunction(definition: FunctionDefinition) {
+        return Value.fromProxy(new ProxyVanillaFunction(definition));
     }
     static fromUnknown(value: unknown): Value {
         switch (typeof value) {
@@ -498,7 +498,7 @@ function unicodeReplaceRight(haystack: string, needle: string, replacement: stri
 }
 
 export namespace Value {
-    export class Bool {
+    export class Bool implements IFormattable {
         constructor(private underlying: boolean) {}
         static format(value: boolean): string {
             return value ? "true" : "false";
@@ -506,11 +506,11 @@ export namespace Value {
         toBoolean() {
             return this.underlying;
         }
-        toString(options_?: ToStringOptions) {
+        format(options_?: FormatOptions) {
             return Bool.format(this.underlying);
         }
     }
-    export class Int {
+    export class Int implements IFormattable {
         constructor(private underlying: bigint) {}
         static format(value: bigint | number): string {
             return value.toString();
@@ -521,7 +521,10 @@ export namespace Value {
         toNumber() {
             return Number(this.underlying);
         }
-        toString(options_?: ToStringOptions) {
+        toString() {
+            return Int.format(this.underlying);
+        }
+        format(options_?: FormatOptions) {
             return Int.format(this.underlying);
         }
         mutate(op: string, rhs_?: bigint) {
@@ -534,7 +537,7 @@ export namespace Value {
             assert.fail("Unknown integer mutate operator: '{op}'", {op});
         }
     }
-    export class Float {
+    export class Float implements IFormattable {
         constructor(private underlying: number) {}
         static format(value: number, sigfigs: number = 12): string {
             const parts = value.toPrecision(sigfigs).split("e");
@@ -547,11 +550,14 @@ export namespace Value {
         toNumber() {
             return this.underlying;
         }
-        toString(options_?: ToStringOptions) {
+        toString() {
+            return Float.format(this.underlying);
+        }
+        format(options_?: FormatOptions) {
             return Float.format(this.underlying);
         }
     }
-    export class Unicode {
+    export class Unicode implements IFormattable {
         constructor(private underlying: Uint32Array) {}
         get length(): bigint {
             return BigInt(this.underlying.length);
@@ -620,7 +626,10 @@ export namespace Value {
         toCodepoints(): Uint32Array {
             return this.underlying;
         }
-        toString(options?: ToStringOptions): string {
+        toString(): string {
+            return unicodeStringAll(this.underlying);
+        }
+        format(options?: FormatOptions): string {
             const quote = options?.quoteString ?? "";
             return quote + unicodeStringAll(this.underlying) + quote;
         }
@@ -629,7 +638,7 @@ export namespace Value {
             return new Value.Unicode(unicode);
         }
     }
-    export interface IProxy {
+    export interface IProxy extends IFormattable {
         getRuntimeType(): Type;
         getProperty(property: string): Value;
         setProperty(property: string, value: Value): Value;
@@ -643,7 +652,8 @@ export namespace Value {
         invoke(runner: Program.IRunner, args: FunctionArguments): Value;
         toUnderlying(): unknown;
         toDebug(): string;
-        toString(options_?: ToStringOptions): string;
+        toString(): string;
+        format(options_?: FormatOptions): string;
         describe(): string;
     }
     export enum Kind {

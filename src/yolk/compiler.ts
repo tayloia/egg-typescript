@@ -264,7 +264,7 @@ class Impl implements Program.IResolver {
         const itype = initializer.resolve(this);
         assert(!type.isEmpty());
         if (type.compatibleType(itype).isEmpty()) {
-            this.raise(node.children[1], `Cannot initialize variable '{identifier}' of type '${type}' with ${itype.describe()}`, { identifier });
+            this.raise(node.children[1], `Cannot initialize variable '{identifier}' of type '${type.format()}' with ${itype.describeValue()}`, { identifier });
         }
         this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
         return new Runtime.Node_StmtVariableDefine(initializer.location, identifier, type, initializer);
@@ -312,7 +312,7 @@ class Impl implements Program.IResolver {
             assert(!resolved.isEmpty());
             const iterables = resolved.getIterables();
             if (iterables.length === 0) {
-                this.raise(node.children[1], `Value of type '${resolved}' is not iterable in 'for' statement`);
+                this.raise(node.children[1], `Value of type '${resolved.format()}' is not iterable in 'for' statement`);
             }
             type = Type.union(...iterables.map(i => i.elementtype));
             if (node.children[0].value.getBool()) {
@@ -390,10 +390,10 @@ class Impl implements Program.IResolver {
             this.raise(node, "Unexpected 'return' statement");
         }
         if (node.children.length === 0) {
-            if (signature.rettype.hasVoid()) {
+            if (signature.rettype.hasOnly(Type.Primitive.Void)) {
                 return new Runtime.Node_StmtReturn(node.location);
             }
-            this.raise(node, `Expected 'return' statement with ${signature.rettype.describe()}`);
+            this.raise(node, `Expected 'return' statement with ${signature.rettype.describeValue()}`);
         }
         const expr = this.compileNode(node.children[0]);
         if (signature.rettype.compatibleType(expr.resolve(this)).isEmpty()) {

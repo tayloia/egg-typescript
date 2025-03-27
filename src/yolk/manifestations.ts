@@ -1,9 +1,10 @@
 import { assert } from "./assertion";
 import { RuntimeException } from "./exception";
+import { FormatOptions, IFormattable } from "./format";
 import { FunctionArguments } from "./function";
 import { Program } from "./program";
 import { Type } from "./type";
-import { ToStringOptions, Value } from "./value";
+import { Value } from "./value";
 
 export interface IManifestation {
     getRuntimeType(): Type;
@@ -25,7 +26,7 @@ class ManifestationsImpl implements Manifestations {
     TYPE = new ManifestationType();
 }
 
-abstract class ManifestationBase implements IManifestation, Value.IProxy {
+abstract class ManifestationBase implements IFormattable, IManifestation, Value.IProxy {
     constructor(public name: string, public proxies?: Map<string, Value.IProxy>) {}
     abstract getRuntimeType(): Type;
     getProxy(): Value.IProxy {
@@ -69,9 +70,12 @@ abstract class ManifestationBase implements IManifestation, Value.IProxy {
         this.unimplemented();
     }
     toDebug(): string {
-        this.unimplemented();
+        return this.toString();
     }
-    toString(options_?: ToStringOptions): string {
+    toString(): string {
+        return this.format();
+    }
+    format(options_?: FormatOptions): string {
         this.unimplemented();
     }
     describe(): string {
@@ -184,6 +188,6 @@ class ManifestationTypeOf extends ManifestationBase {
     invoke(runner_: Program.IRunner, args: FunctionArguments): Value {
         args.expect(1);
         const value = args.arguments[0];
-        return Value.fromString(value.getRuntimeType().toString());
+        return Value.fromString(value.getRuntimeType().format());
     }
 }
