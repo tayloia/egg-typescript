@@ -144,6 +144,9 @@ class Node implements Parser.INode {
         }
         return new Node(location, Parser.Kind.StatementIf, [condition, ifBlock]);
     }
+    static createStatementWhile(location: Location, condition: Node, block: Node): Node {
+        return new Node(location, Parser.Kind.StatementWhile, [condition, block]);
+    }
     static createStatementReturn(location: Location, expr?: Node): Node {
         return new Node(location, Parser.Kind.StatementReturn, expr ? [expr] : []);
     }
@@ -252,6 +255,7 @@ class Impl extends Logger {
         let success = this.parseFunctionDefinition(lookahead)
                    ?? this.parseStatementFor(lookahead)
                    ?? this.parseStatementIf(lookahead)
+                   ?? this.parseStatementWhile(lookahead)
                    ?? this.parseStatementReturn(lookahead)
                    ?? this.parseStatementTry(lookahead);
         if (success) {
@@ -391,6 +395,23 @@ class Impl extends Logger {
         }
         return this.expectStatementIf(lookahead);
     }
+    private parseStatementWhile(lookahead: number): Success | undefined {
+        if (this.peekKeyword(lookahead) !== "while" || this.peekPunctuation(lookahead + 1) !== "(") {
+            return undefined;
+        }
+        const condition = this.parseGuardExpression(lookahead + 2, "guard in 'while' statement")
+                       ?? this.parseValueExpression(lookahead + 2)
+                       ?? this.unexpected("Expected condition or guard after '(' in 'while' statement", lookahead + 2);
+        if (this.peekPunctuation(condition.lookahead) !== ")") {
+            this.unexpected("Expected ')' after condition in 'while' statement", condition.lookahead, ")");
+        }
+        if (this.peekPunctuation(condition.lookahead + 1) !== "{") {
+            this.unexpected("Expected '{' after ')' in 'while' statement", condition.lookahead + 1, "{");
+        }
+        const block = this.expectStatementBlock(condition.lookahead + 1, "Expected statement within 'while' block");
+        const location = this.peekLocation(lookahead, block.lookahead);
+        return new Success(Node.createStatementWhile(location, condition.node, block.node), block.lookahead);
+    }
     private parseStatementReturn(lookahead: number): Success | undefined {
         if (this.peekKeyword(lookahead) !== "return") {
             return undefined;
@@ -444,7 +465,7 @@ class Impl extends Logger {
         assert(this.peekKeyword(lookahead) === "if" && this.peekPunctuation(lookahead + 1) === "(");
         const condition = this.parseGuardExpression(lookahead + 2, "guard in 'if' statement")
                        ?? this.parseValueExpression(lookahead + 2)
-                       ?? this.unexpected("Expected condition or guard after '(' in 'if' statement", lookahead + 2, "(");
+                       ?? this.unexpected("Expected condition or guard after '(' in 'if' statement", lookahead + 2);
         if (this.peekPunctuation(condition.lookahead) !== ")") {
             this.unexpected("Expected ')' after condition in 'if' statement", condition.lookahead, ")");
         }
@@ -967,6 +988,7 @@ export namespace Parser {
         StatementForeach = "stmt-foreach",
         StatementForloop = "stmt-forloop",
         StatementIf = "stmt-if",
+        StatementWhile = "stmt-while",
         StatementTry = "stmt-try",
         StatementCatch = "stmt-catch",
         StatementReturn = "stmt-return",

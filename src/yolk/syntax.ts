@@ -42,6 +42,8 @@ class Impl extends Logger {
                 return new Node(pnode.location, Syntax.Kind.StmtBlock, pnode.children.map(child => this.syntaxStmt(child)));
             case Parser.Kind.StatementIf:
                 return this.syntaxStmtIf(pnode);
+            case Parser.Kind.StatementWhile:
+                return this.syntaxStmtWhile(pnode);
             case Parser.Kind.StatementReturn:
                 assert.le(pnode.children.length, 1);
                 return new Node(pnode.location, Syntax.Kind.StmtReturn, pnode.children.map(child => this.syntaxExpr(child)));
@@ -131,6 +133,16 @@ class Impl extends Logger {
             node.children.push(this.syntaxStmt(pnode.children[2]));
         }
         return node;
+    }
+    syntaxStmtWhile(pnode: Parser.INode): Node {
+        assert.eq(pnode.kind, Parser.Kind.StatementWhile);
+        assert.eq(pnode.children.length, 2);
+        if (pnode.children[0].kind === Parser.Kind.Guard) {
+            const guard = pnode.children[0];
+            assert.eq(guard.children.length, 2);
+            return new Node(pnode.location, Syntax.Kind.StmtWhileGuard, [this.syntaxType(guard.children[0]), this.syntaxExpr(guard.children[1]), this.syntaxStmt(pnode.children[1])], guard.value);
+        }
+        return new Node(pnode.location, Syntax.Kind.StmtWhile, [this.syntaxExpr(pnode.children[0]), this.syntaxStmt(pnode.children[1])]);
     }
     syntaxStmtTry(location: Location, tryBlock: Parser.INode, catchClauses: Parser.INode[], finallyClause: Parser.INode | undefined): Node {
         const children = [this.syntaxStmt(tryBlock)];
@@ -274,6 +286,8 @@ export namespace Syntax {
         StmtAssert = "stmt-assert",
         StmtIf = "stmt-if",
         StmtIfGuard = "stmt-if-guard",
+        StmtWhile = "stmt-while",
+        StmtWhileGuard = "stmt-while-guard",
         StmtReturn = "stmt-return",
         StmtTry = "stmt-try",
         StmtCatch = "stmt-catch",

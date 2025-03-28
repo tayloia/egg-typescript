@@ -107,6 +107,10 @@ class Impl implements Program.IResolver {
                 return this.compileStmtIf(node);
             case Syntax.Kind.StmtIfGuard:
                 return this.compileStmtIfGuard(node);
+            case Syntax.Kind.StmtWhile:
+                return this.compileStmtWhile(node);
+            case Syntax.Kind.StmtWhileGuard:
+                return this.compileStmtWhileGuard(node);
             case Syntax.Kind.StmtReturn:
                 return this.compileStmtReturn(node);
             case Syntax.Kind.StmtTry:
@@ -205,6 +209,32 @@ class Impl implements Program.IResolver {
         }
         assert.fail("Unknown keyword in compileTypeManifestation: {keyword}", {keyword});
     }
+    compileTypeInfer(identifier: string, flavour: SymbolFlavour, type: Syntax.INode, initializer: Syntax.INode): [Type, Runtime.Node] {
+        let rtype: Type;
+        let rinitializer: Runtime.Node;
+        if (type.kind === Syntax.Kind.TypeInfer) {
+            rinitializer = this.compileNode(initializer);
+            rtype = rinitializer.resolve(this);
+            assert(!rtype.isEmpty());
+            if (type.value.getBool()) {
+                // Allow 'var?'
+                rtype = rtype.addPrimitive(Type.Primitive.Null);
+            } else {
+                // Disallow 'var?'
+                rtype = rtype.removePrimitive(Type.Primitive.Null);
+            }
+        } else {
+            rtype = this.compileNode(type).resolve(this);
+            assert(!rtype.isEmpty());
+            rinitializer = this.compileNode(initializer);
+        }
+        const itype = rinitializer.resolve(this);
+        assert(!rtype.isEmpty());
+        if (rtype.compatibleType(itype).isEmpty()) {
+            this.raise(initializer, `Cannot initialize ${flavour} '{identifier}' of type '${rtype.format()}' with ${itype.describeValue()}`, { identifier });
+        }
+        return [rtype, rinitializer];
+    }
     compileValueArray(node: Syntax.INode): Runtime.Node {
         return new Runtime.Node_ValueArray(node.location, node.children.map(child => {
             return new Runtime.ArrayInitializer(this.compileNode(child), false);
@@ -243,29 +273,7 @@ class Impl implements Program.IResolver {
         assert(node.kind === Syntax.Kind.StmtVariableDefine);
         assert.eq(node.children.length, 2);
         const identifier = node.value.asString();
-        let type: Type;
-        let initializer: Runtime.Node;
-        if (node.children[0].kind === Syntax.Kind.TypeInfer) {
-            initializer = this.compileNode(node.children[1]);
-            type = initializer.resolve(this);
-            assert(!type.isEmpty());
-            if (node.children[0].value.getBool()) {
-                // Allow 'var?'
-                type = type.addPrimitive(Type.Primitive.Null);
-            } else {
-                // Disallow 'var?'
-                type = type.removePrimitive(Type.Primitive.Null);
-            }
-        } else {
-            type = this.compileNode(node.children[0]).resolve(this);
-            assert(!type.isEmpty());
-            initializer = this.compileNode(node.children[1]);
-        }
-        const itype = initializer.resolve(this);
-        assert(!type.isEmpty());
-        if (type.compatibleType(itype).isEmpty()) {
-            this.raise(node.children[1], `Cannot initialize variable '{identifier}' of type '${type.format()}' with ${itype.describeValue()}`, { identifier });
-        }
+        const [type, initializer] = this.compileTypeInfer(identifier, SymbolFlavour.Variable, node.children[0], node.children[1]);
         this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
         return new Runtime.Node_StmtVariableDefine(initializer.location, identifier, type, initializer);
     }
@@ -276,30 +284,28 @@ class Impl implements Program.IResolver {
         const rettype = this.compileNode(node.children[0]).resolve(this);
         assert(!rettype.isEmpty());
         assert(node.children[1].kind === Syntax.Kind.FunctionParameters);
-        this.symbols.add(fname, SymbolFlavour.Function, Type.OBJECT, Value.VOID);
+        const parameters = node.children[1].children.map(parameter => {
+            assert.eq(parameter.kind, Syntax.Kind.FunctionParameter);
+            assert.eq(parameter.children.length, 1);
+            const pname = parameter.value.asString();
+            const ptype = this.compileNode(parameter.children[0]).resolve(this);
+            assert(!ptype.isEmpty());
+            return new FunctionParameter(pname, ptype);
+        });
+        const signature = new FunctionSignature(fname, node.location, rettype, parameters);
+        this.scope.pushFunction(signature);
+        this.symbols.add(fname, SymbolFlavour.Function, Type.fromShape(signature.makeShape()), Value.VOID);
         this.symbols.push();
         try {
-            const parameters = node.children[1].children.map(parameter => {
-                assert.eq(parameter.kind, Syntax.Kind.FunctionParameter);
-                assert.eq(parameter.children.length, 1);
-                const pname = parameter.value.asString();
-                const ptype = this.compileNode(parameter.children[0]).resolve(this);
-                assert(!ptype.isEmpty());
-                this.symbols.add(pname, SymbolFlavour.Argument, ptype, Value.VOID);
-                return new FunctionParameter(pname, ptype);
-            });
-            const signature = new FunctionSignature(fname, node.location, rettype, parameters);
-            this.scope.pushFunction(signature);
-            try {
-                const block = this.compileNode(node.children[2]);
-                return new Runtime.Node_StmtFunctionDefine(node.location, signature, block);
+            for (const parameter of parameters) {
+                this.symbols.add(parameter.name, SymbolFlavour.Argument, parameter.type, Value.VOID);
             }
-            finally {
-                this.scope.pop();
-            }
+            const block = this.compileNode(node.children[2]);
+            return new Runtime.Node_StmtFunctionDefine(node.location, signature, block);
         }
         finally {
             this.symbols.pop();
+            this.scope.pop();
         }
     }
     compileStmtForeach(node: Syntax.INode): Runtime.Node {
@@ -363,9 +369,7 @@ class Impl implements Program.IResolver {
         assert(node.kind === Syntax.Kind.StmtIfGuard);
         assert.ge(node.children.length, 3);
         const identifier = node.value.asString();
-        const type = this.compileNode(node.children[0]).resolve(this);
-        assert(!type.isEmpty());
-        const initializer = this.compileNode(node.children[1]);
+        const [type, initializer] = this.compileTypeInfer(identifier, SymbolFlavour.Guard, node.children[0], node.children[1]);
         let ifBlock;
         this.symbols.push();
         try {
@@ -381,6 +385,27 @@ class Impl implements Program.IResolver {
         assert.eq(node.children.length, 4);
         const elseBlock = this.compileNode(node.children[3]);
         return new Runtime.Node_StmtIfGuard(node.location, identifier, type, initializer, ifBlock, elseBlock);
+    }
+    compileStmtWhile(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtWhile);
+        assert.eq(node.children.length, 2);
+        const condition = this.compileNode(node.children[0]);
+        const block = this.compileNode(node.children[1]);
+        return new Runtime.Node_StmtWhile(node.location, condition, block);
+    }
+    compileStmtWhileGuard(node: Syntax.INode): Runtime.Node {
+        assert(node.kind === Syntax.Kind.StmtWhileGuard);
+        assert.eq(node.children.length, 3);
+        const identifier = node.value.asString();
+        const [type, initializer] = this.compileTypeInfer(identifier, SymbolFlavour.Guard, node.children[0], node.children[1]);
+        this.symbols.push();
+        try {
+            this.symbols.add(identifier, SymbolFlavour.Guard, type, Value.VOID);
+            return new Runtime.Node_StmtWhileGuard(node.location, identifier, type, initializer, this.compileNode(node.children[2]));
+        }
+        finally {
+            this.symbols.pop();
+        }
     }
     compileStmtReturn(node: Syntax.INode): Runtime.Node {
         assert(node.kind === Syntax.Kind.StmtReturn);

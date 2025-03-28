@@ -32,7 +32,7 @@ export class Type implements IFormattable {
         if (this.hasPrimitive(Type.Primitive.Object)) {
             return [new Type.Callable(Type.ANYQ)];
         }
-        return [];
+        return [...this.shapes].map(shape => shape.callable).filter(callable => callable !== undefined);
     }
     getIterables(): Type.Iterable[] {
         // TODO
@@ -42,7 +42,7 @@ export class Type implements IFormattable {
         if (this.hasPrimitive(Type.Primitive.String)) {
             return [new Type.Iterable(Type.STRING)];
         }
-        return [];
+        return [...this.shapes].map(shape => shape.iterable).filter(iterable => iterable !== undefined);
     }
     compatibleType(that: Type): Type {
         assert(!this.isEmpty());

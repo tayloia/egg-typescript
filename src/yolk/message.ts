@@ -1,3 +1,4 @@
+import { FormatOptions } from "./format";
 import { Location } from "./location";
 
 export class Message extends Error {
@@ -17,12 +18,17 @@ export class Message extends Error {
         return Message.format(this.reason, this.parameters, prefixLocation);
     }
     static format(reason: string, parameters: Message.Parameters, prefixLocation: boolean): string {
+        const options = new FormatOptions();
+        options.quoteString = "\"";
         function replacer(input: string, key: string): string {
             const output = parameters[key];
-            if (output === undefined) {
-                return input;
+            if (output) {
+                if (output instanceof Object && "format" in output && typeof output.format === "function") {
+                    return output?.format(options);
+                }
+                return String(output);
             }
-            return String(output);
+            return input;
         }
         const message = reason.replace(/\{([^}]+)\}/g, replacer);
         const prefix = prefixLocation && parameters.location && (parameters.location as Location).format();

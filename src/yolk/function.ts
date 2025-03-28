@@ -7,6 +7,16 @@ import { Program } from "./program";
 import { Type } from "./type";
 import { Value } from "./value";
 
+class FunctionShape extends Type.Shape {
+    constructor(public signature: FunctionSignature) {
+        super();
+        this.callable = new Type.Callable(this.signature.rettype);
+    }
+    format(options?: FormatOptions): string {
+        return this.signature.format(options);
+    }
+}
+
 export class FunctionArguments {
     funcname: string = "";
     arguments: Value[] = [];
@@ -71,6 +81,9 @@ export class FunctionSignature implements IFormattable {
     constructor(public readonly name: string, public readonly location: Location, public readonly rettype: Type, public parameters: FunctionParameter[]) {}
     format(options?: FormatOptions): string {
         return `${this.rettype.format(options)}(${this.parameters.map(p => p.type.format(options)).join(",")})`;
+    }
+    makeShape(): Type.Shape {
+        return new FunctionShape(this);
     }
 }
 

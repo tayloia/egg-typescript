@@ -481,6 +481,71 @@ export namespace Runtime {
         }
     }
 
+    export class Node_StmtWhile extends Node {
+        constructor(location: Location, public condition: Node, public block: Node) {
+            super(location);
+        }
+        resolve(resolver: Program.IResolver): Type {
+            this.unimplemented(resolver);
+        }
+        evaluate(runner: Program.IRunner): Value {
+            this.unimplemented(runner);
+        }
+        execute(runner: Program.IRunner): Outcome {
+            while (this.condition.evaluate(runner).asBoolean()) {
+                const outcome = this.block.execute(runner);
+                if (outcome.flow !== Flow.Through && outcome.flow !== Flow.Continue) {
+                    return outcome;
+                }
+            }
+            return Outcome.THROUGH;
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
+        }
+    }
+
+    export class Node_StmtWhileGuard extends Node {
+        constructor(location: Location, public identifier: string, public type: Type, public initializer: Node, public block: Node) {
+            super(location);
+        }
+        resolve(resolver: Program.IResolver): Type {
+            this.unimplemented(resolver);
+        }
+        evaluate(runner: Program.IRunner): Value {
+            this.unimplemented(runner);
+        }
+        execute(runner: Program.IRunner): Outcome {
+            runner.scopePush();
+            try {
+                runner.symbolAdd(this.identifier, SymbolFlavour.Guard, this.type, Value.VOID);
+                for (;;) {
+                    const initializer = this.initializer.evaluate(runner);
+                    const compatible = this.type.compatibleValue(initializer);
+                    if (compatible.isVoid()) {
+                        return Outcome.THROUGH;
+                    }
+                    try {
+                        runner.symbolSet(this.identifier, compatible);
+                    }
+                    catch (error) {
+                        this.catch(error);
+                    }
+                    const outcome = this.block.execute(runner);
+                    if (outcome.flow !== Flow.Through && outcome.flow !== Flow.Continue) {
+                        return outcome;
+                    }
+                }
+            }
+            finally {
+                runner.scopePop();
+            }
+        }
+        modify(runner: Program.IRunner, op_: string, expr_: Node): Value {
+            this.unimplemented(runner);
+        }
+    }
+
     export class Node_StmtReturn extends Node {
         constructor(location: Location, public expr?: Node) {
             super(location);
