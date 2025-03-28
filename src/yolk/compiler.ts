@@ -209,27 +209,33 @@ class Impl implements Program.IResolver {
         }
         assert.fail("Unknown keyword in compileTypeManifestation: {keyword}", {keyword});
     }
-    compileTypeInfer(identifier: string, flavour: SymbolFlavour, type: Syntax.INode, initializer: Syntax.INode): [Type, Runtime.Node] {
-        let rtype: Type;
-        let rinitializer: Runtime.Node;
+    compileTypeInfer(kind: Syntax.Kind, identifier: string, flavour: SymbolFlavour, type: Syntax.INode, initializer: Syntax.INode): [Type, Runtime.Node] {
         if (type.kind === Syntax.Kind.TypeInfer) {
-            rinitializer = this.compileNode(initializer);
-            rtype = rinitializer.resolve(this);
+            const rinitializer = this.compileNode(initializer);
+            let rtype = rinitializer.resolve(this);
             assert(!rtype.isEmpty());
-            if (type.value.getBool()) {
+            if (kind === Syntax.Kind.StmtForeach) {
+                const iterables = rtype.getIterables();
+                if (iterables.length === 0) {
+                    this.raise(initializer, `Value of type '${rtype.format()}' is not iterable in 'for' statement`);
+                }
+                rtype = Type.union(...iterables.map(i => i.elementtype));
+            }
+            if (type.value.asBoolean()) {
                 // Allow 'var?'
                 rtype = rtype.addPrimitive(Type.Primitive.Null);
             } else {
                 // Disallow 'var?'
                 rtype = rtype.removePrimitive(Type.Primitive.Null);
             }
-        } else {
-            rtype = this.compileNode(type).resolve(this);
             assert(!rtype.isEmpty());
-            rinitializer = this.compileNode(initializer);
+            return [rtype, rinitializer];
         }
-        const itype = rinitializer.resolve(this);
+        const rtype = this.compileNode(type).resolve(this);
         assert(!rtype.isEmpty());
+        const rinitializer = this.compileNode(initializer);
+        const itype = rinitializer.resolve(this);
+        assert(!itype.isEmpty());
         if (rtype.compatibleType(itype).isEmpty()) {
             this.raise(initializer, `Cannot initialize ${flavour} '{identifier}' of type '${rtype.format()}' with ${itype.describeValue()}`, { identifier });
         }
@@ -273,7 +279,7 @@ class Impl implements Program.IResolver {
         assert(node.kind === Syntax.Kind.StmtVariableDefine);
         assert.eq(node.children.length, 2);
         const identifier = node.value.asString();
-        const [type, initializer] = this.compileTypeInfer(identifier, SymbolFlavour.Variable, node.children[0], node.children[1]);
+        const [type, initializer] = this.compileTypeInfer(Syntax.Kind.StmtVariableDefine, identifier, SymbolFlavour.Variable, node.children[0], node.children[1]);
         this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
         return new Runtime.Node_StmtVariableDefine(initializer.location, identifier, type, initializer);
     }
@@ -311,34 +317,13 @@ class Impl implements Program.IResolver {
     compileStmtForeach(node: Syntax.INode): Runtime.Node {
         assert(node.kind === Syntax.Kind.StmtForeach);
         assert.eq(node.children.length, 3);
-        let type, expr;
-        if (node.children[0].kind === Syntax.Kind.TypeInfer) {
-            expr = this.compileNode(node.children[1]);
-            const resolved = expr.resolve(this);
-            assert(!resolved.isEmpty());
-            const iterables = resolved.getIterables();
-            if (iterables.length === 0) {
-                this.raise(node.children[1], `Value of type '${resolved.format()}' is not iterable in 'for' statement`);
-            }
-            type = Type.union(...iterables.map(i => i.elementtype));
-            if (node.children[0].value.getBool()) {
-                // Allow 'var?'
-                type = type.addPrimitive(Type.Primitive.Null);
-            } else {
-                // Disallow 'var?'
-                type = type.removePrimitive(Type.Primitive.Null);
-            }
-        } else {
-            type = this.compileNode(node.children[0]).resolve(this);
-            assert(!type.isEmpty());
-            expr = this.compileNode(node.children[1]);
-        }
         const identifier = node.value.asString();
+        const [type, initializer] = this.compileTypeInfer(Syntax.Kind.StmtForeach, identifier, SymbolFlavour.Variable, node.children[0], node.children[1]);
         this.symbols.push();
         try {
             this.symbols.add(identifier, SymbolFlavour.Variable, type, Value.VOID);
             const block = this.compileNode(node.children[2]);
-            return new Runtime.Node_StmtForeach(node.location, identifier, type, expr, block);
+            return new Runtime.Node_StmtForeach(node.location, identifier, type, initializer, block);
         }
         finally {
             this.symbols.pop();
@@ -369,7 +354,7 @@ class Impl implements Program.IResolver {
         assert(node.kind === Syntax.Kind.StmtIfGuard);
         assert.ge(node.children.length, 3);
         const identifier = node.value.asString();
-        const [type, initializer] = this.compileTypeInfer(identifier, SymbolFlavour.Guard, node.children[0], node.children[1]);
+        const [type, initializer] = this.compileTypeInfer(Syntax.Kind.StmtIfGuard, identifier, SymbolFlavour.Guard, node.children[0], node.children[1]);
         let ifBlock;
         this.symbols.push();
         try {
@@ -397,7 +382,7 @@ class Impl implements Program.IResolver {
         assert(node.kind === Syntax.Kind.StmtWhileGuard);
         assert.eq(node.children.length, 3);
         const identifier = node.value.asString();
-        const [type, initializer] = this.compileTypeInfer(identifier, SymbolFlavour.Guard, node.children[0], node.children[1]);
+        const [type, initializer] = this.compileTypeInfer(Syntax.Kind.StmtWhileGuard, identifier, SymbolFlavour.Guard, node.children[0], node.children[1]);
         this.symbols.push();
         try {
             this.symbols.add(identifier, SymbolFlavour.Guard, type, Value.VOID);
